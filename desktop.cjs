@@ -66,10 +66,18 @@ app.whenReady().then(async()=>{
     await write(file,JSON.stringify(checked,null,2)+'\n');
     return file;
   });
-  route('svg',async(graph,critical)=>{
-    const result=await dialog.showSaveDialog(window,{defaultPath:'network.svg',filters:[{name:'SVG',extensions:['svg']}]});
+  route('svg',async(graph,view)=>{
+    const kind=['time','logic'].includes(view)?view:null;
+    const result=await dialog.showSaveDialog(window,{defaultPath:kind?'activity-on-arrow.svg':'flow.svg',filters:[{name:'SVG',extensions:['svg']}]});
     if(result.canceled)return false;
-    await write(result.filePath,(await draw(graph,{critical:critical===true})).svg);
+    await write(result.filePath,(await draw(graph,{critical:view===true,networkView:kind})).svg);
+    return true;
+  });
+  route('networkData',async(graph)=>{
+    const data=(await draw(graph,{networkView:'time'})).network;
+    const result=await dialog.showSaveDialog(window,{defaultPath:'activity-on-arrow.json',filters:[{name:'JSON',extensions:['json']}]});
+    if(result.canceled)return false;
+    await write(result.filePath,JSON.stringify(data,null,2)+'\n');
     return true;
   });
   window=new BrowserWindow({title:'GridDraft 网络图工作台',width:1430,height:900,minWidth:980,minHeight:670,backgroundColor:'#f2f6fb',

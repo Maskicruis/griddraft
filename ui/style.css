@@ -29,6 +29,17 @@ h2{font-size:15px;margin:0} .objects input{margin:10px 9px 2px;min-width:0;font-
 #stage svg{display:block;overflow:visible;position:absolute;left:0;top:0}
 #stage [data-node].selected .node-shell{stroke:#136995;stroke-width:3.5}
 #stage [data-edge].selected path:last-of-type{stroke:#0e6a9d;stroke-width:4}
+#stage [data-event].selected circle{stroke:#edab33;stroke-width:3.5}
+#stage [data-activity].selected path{stroke-width:4}
+#stage [data-event],#stage [data-activity]:not([data-activity=""]){cursor:pointer}
+.view-switch{background:#edf4fa;border-radius:7px;padding:3px}
+.view-switch button{border-color:transparent}
+#workTable{min-height:0;overflow:auto;flex:1;background:#fbfdff}
+.work-grid{border-collapse:collapse;width:100%;font-size:12px;min-width:650px;text-align:left}
+.work-grid td,.work-grid th{padding:8px;border-bottom:1px solid #e1ecf4;font-variant-numeric:tabular-nums}
+.work-grid th{position:sticky;top:0;background:#eaf3fb}
+.work-grid td button{border:0;background:transparent;padding:4px;font-size:12px;text-align:left}
+.critical-work{color:#a13f3b}
 .canvas-foot{padding:8px 10px;display:flex;gap:10px;justify-content:space-between;border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
 .error,.form-error{color:#922f27}
 #properties{overflow:auto;padding:10px 11px;font-size:12px}#properties label{display:grid;gap:4px;margin-bottom:10px}#properties :is(input,select){width:100%;min-width:0}

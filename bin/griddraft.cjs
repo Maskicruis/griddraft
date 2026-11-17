@@ -5,6 +5,7 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const {randomUUID}=require('node:crypto');
 const engine=require('../src/engine.cjs');
+const {buildNetwork,renderNetwork}=require('../src/aoa.cjs');
 const version=require('../package.json').version;
 const MAX=32*1024*1024;
 const help=`GridDraft ${version}
@@ -13,7 +14,8 @@ const help=`GridDraft ${version}
   griddraft render <input.json | -> [--critical] [--out file.svg]
   griddraft cpm <input.json | -> [--out file]
   griddraft edit <input.json | -> --patch operations.json [--out file]
-  griddraft batch <directory> --out <directory> [--format svg|layout|cpm] [--critical]
+  griddraft network <input.json | -> [--format svg|json] [--view time|logic] [--out file]
+  griddraft batch <directory> --out <directory> [--format svg|layout|cpm|network] [--view time|logic] [--critical]
 
 JSON and SVG data go to stdout when --out is omitted. Errors are JSON on stderr.
 Exit codes: 0 success, 1 operation failed, 2 usage error, 3 batch completed with failures.
@@ -65,7 +67,9 @@ async function write(out,contents){
 async function batch(input,flags){
   if(!flags['--out']||flags['--out']==='-'||input==='-')throw usage('batch 需要输入和输出目录。');
   const format=flags['--format']||'svg';
-  if(!['svg','layout','cpm'].includes(format)||flags['--critical']&&format!=='svg')throw usage('批处理格式或选项无效。');
+  if(!['svg','layout','cpm','network'].includes(format)||flags['--critical']&&format!=='svg'||
+    flags['--view']&&format!=='network')throw usage('批处理格式或选项无效。');
+  if(flags['--view']&&!['time','logic'].includes(flags['--view']))throw usage('视图须为 time 或 logic。');
   const entries=await fs.readdir(input,{withFileTypes:true});
   const files=entries.filter(e=>e.isFile()&&/\.json$/i.test(e.name)).map(e=>e.name).sort();
   await fs.mkdir(flags['--out'],{recursive:true});
@@ -74,14 +78,15 @@ async function batch(input,flags){
     throw usage('批处理的输入、输出目录必须不同。');
   const items=[], outputs=new Set();
   for(const file of files){
-    const name=file.replace(/\.json$/i,format==='svg'?'.svg':'.'+format+'.json');
+    const name=file.replace(/\.json$/i,format==='svg'?'.svg':format==='network'?'.network.svg':'.'+format+'.json');
     try{
       const key=process.platform==='win32'?name.toLowerCase():name;
       if(outputs.has(key))throw new engine.GraphError('OUTPUT_COLLISION','批次内输出文件名冲突。');
       outputs.add(key);
       const graph=await read(path.join(a,file));
-      const content=format==='svg'?(await engine.render(graph,{critical:flags['--critical']})).svg:
-        json(format==='layout'?await engine.layout(graph):engine.cpm(graph));
+      const content=format==='network'?renderNetwork(buildNetwork(graph),{view:flags['--view']}):
+        format==='svg'?(await engine.render(graph,{critical:flags['--critical']})).svg:
+          json(format==='layout'?await engine.layout(graph):engine.cpm(graph));
       await write(path.join(b,name),content);
       items.push({input:file,ok:true,output:name});
     }catch(error){items.push({input:file,ok:false,error:status(error)});}
@@ -95,7 +100,7 @@ async function main(args){
   if(!command||command==='--help'||command==='help'){process.stdout.write(help);return 0;}
   if(command==='--version'){process.stdout.write(version+'\n');return 0;}
   const choices={validate:[],layout:['--direction','--out'],render:['--critical','--out'],
-    cpm:['--out'],edit:['--patch','--out'],batch:['--out','--format','--critical']};
+    cpm:['--out'],edit:['--patch','--out'],network:['--format','--view','--out'],batch:['--out','--format','--critical','--view']};
   if(!Object.hasOwn(choices,command))throw usage('未知命令 '+command);
   const {input,flags}=parse(args,choices[command]);
   if(command==='batch')return batch(input,flags);
@@ -107,6 +112,13 @@ async function main(args){
   }else if(command==='layout')result=await engine.layout(graph,{direction:flags['--direction']});
   else if(command==='render')result=(await engine.render(graph,{critical:flags['--critical']})).svg;
   else if(command==='cpm')result=engine.cpm(graph);
+  else if(command==='network'){
+    const format=flags['--format']||'svg';
+    if(!['svg','json'].includes(format)||flags['--view']&&!['time','logic'].includes(flags['--view']))
+      throw usage('网络图格式须为 svg 或 json，视图须为 time 或 logic。');
+    const network=buildNetwork(graph);
+    result=format==='json'?network:renderNetwork(network,{view:flags['--view']});
+  }
   else {
     if(!flags['--patch']||flags['--patch']==='-')throw usage('edit 需要 --patch operations.json。');
     result=engine.edit(graph,await read(flags['--patch']));

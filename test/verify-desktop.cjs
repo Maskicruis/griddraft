@@ -30,18 +30,37 @@ async function run(){
     const page=context.pages().find(p=>p.url().startsWith('file:'))||await context.waitForEvent('page');
     const errors=[];
     page.on('pageerror',error=>errors.push(error.message));
-    try{await page.locator('#stage [data-node="RD"]').waitFor({timeout:15000});}
+    try{await page.locator('#stage [data-event]').first().waitFor({timeout:15000});}
     catch(error){console.error(await page.locator('#status').textContent());throw error;}
+    assert.equal(await page.locator('#stage [data-kind="activity"]').count(),7);
+    assert.equal(await page.locator('#stage [data-kind="activity"][data-critical="true"]').count(),4);
+    await page.locator('#stage [data-event]').first().locator('text').first().click({timeout:5000});
+    assert.match(await page.locator('#properties').textContent(),/事件 1.*最早发生 D0/);
+    await page.screenshot({path:path.join(output,'01-双代号时标.png')});
+    await page.locator('#networkLogic').click();
+    await page.waitForFunction(()=>document.querySelector('#stage svg > title').textContent.endsWith('双代号网络图'));
+    await page.screenshot({path:path.join(output,'02-双代号结构.png')});
+    await page.locator('#workList').click();
+    await page.locator('#workTable tbody button').first().waitFor();
+    assert.equal(await page.locator('#workTable tbody button').count(),7);
+    await page.locator('#workTable').getByRole('button',{name:'进场道路',exact:true}).click();
+    assert.equal(await page.locator('#properties input[name=id]').inputValue(),'RD');
+    await page.screenshot({path:path.join(output,'03-工作时差表.png')});
+    await page.locator('#properties input[name=duration]').fill('10');
+    await page.getByRole('button',{name:'应用修改',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('35 天'));
+    await page.locator('#undo').click();
+    await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('34 天'));
+    await page.locator('#flowView').click();
+    await page.locator('#stage [data-node="RD"]').waitFor();
     assert.equal(await page.locator('#stage [data-node]').count(),9);
     await page.locator('#cpm').click();
     await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('34 天'));
-    await page.screenshot({path:path.join(output,'01-网络画布.png')});
     await page.locator('#timelineView').click();
     await page.locator('#timeline .time-row[data-id="RD"]').waitFor();
     assert.equal(await page.locator('#timeline .time-row[data-id]').count(),9);
     await page.locator('#timeline .time-row[data-id="RD"] button').click();
     assert.equal(await page.locator('#properties input[name=id]').inputValue(),'RD');
-    await page.screenshot({path:path.join(output,'02-逻辑时间轴.png')});
     await page.locator('#timelineView').click();
     const node=page.locator('#stage [data-node="RD"]');
     await node.waitFor();
@@ -66,7 +85,7 @@ async function run(){
     await page.waitForFunction(()=>document.querySelectorAll('#stage [data-edge]').length===11);
     assert.equal(await page.locator('#properties select[name=to]').inputValue(),'FINISH');
     assert.deepEqual(errors,[]);
-    const result={guiNetwork:true, guiTimeline:true, drawAndConnect:true, positionUndo:true, criticalPathDays:34};
+    const result={timeScaledNetwork:true, structuralNetwork:true, workTableRecalculates:true, guiTimeline:true, drawAndConnect:true, positionUndo:true, criticalPathDays:34};
     await fs.writeFile(path.join(output,'gui-verification.json'),JSON.stringify(result,null,2),'utf8');
     console.log(JSON.stringify(result));
   }finally{

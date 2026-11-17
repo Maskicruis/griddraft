@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const ui={graph:null,file:null,previous:[],next:[],selected:null,list:'node',link:null,critical:false,
-  timeline:false,analysis:null,zoom:1,busy:false,dirty:false,pointer:null};
+  timeline:false,analysis:null,network:null,view:'time',workTable:false,zoom:1,busy:false,dirty:false,pointer:null};
 const names={task:'工序',decision:'判断',milestone:'里程碑'};
 const api=window.grid;
 const blank=()=>({version:1,title:'未命名网络图',direction:'RIGHT',nodes:[],edges:[]});
@@ -37,7 +37,7 @@ function frameZoom(){
 }
 function fit(){
   const svg=$('stage').firstElementChild;
-  if(!svg||ui.timeline)return;
+  if(!svg||ui.timeline||ui.workTable)return;
   const {width,height}=svg.viewBox.baseVal,view=$('canvas');
   ui.zoom=Math.max(.05,Math.min(1.25,(view.clientWidth-28)/width,(view.clientHeight-36)/height));
   frameZoom();
@@ -46,11 +46,12 @@ function fit(){
 function dataForSelection(){
   if(!ui.selected)return null;
   const {kind,id}=ui.selected;
-  return (kind==='node'?ui.graph.nodes:ui.graph.edges).find(item=>item.id===id) || null;
+  const items=kind==='event'?ui.network?.events:kind==='node'?ui.graph.nodes:ui.graph.edges;
+  return items?.find(item=>item.id===id) || null;
 }
 function select(kind,id){
   ui.selected=id?{kind,id}:null;
-  if(id&&ui.list!==kind){ui.list=kind;$('find').value='';}
+  if(id&&kind!=='event'&&ui.list!==kind){ui.list=kind;$('find').value='';}
   paintSelection();
   renderList();
   inspector();
@@ -59,6 +60,10 @@ function paintSelection(){
   $('stage').querySelectorAll('[data-node],[data-edge]').forEach(n=>{
     n.classList.toggle('selected',n.dataset.node===ui.selected?.id&&ui.selected?.kind==='node'||
       n.dataset.edge===ui.selected?.id&&ui.selected?.kind==='edge');
+  });
+  $('stage').querySelectorAll('[data-activity],[data-event]').forEach(n=>{
+    n.classList.toggle('selected',n.dataset.activity===ui.selected?.id&&ui.selected?.kind==='node'||
+      Number(n.dataset.event)===ui.selected?.id&&ui.selected?.kind==='event');
   });
   $('timeline').querySelectorAll('.time-row[data-id]').forEach(row=>row.classList.toggle('selected',ui.selected?.kind==='node'&&row.dataset.id===ui.selected.id));
 }
@@ -69,19 +74,25 @@ function refresh(){
   $('cpm').setAttribute('aria-pressed',String(ui.critical));
   $('link').setAttribute('aria-pressed',String(ui.link!==null));
   $('timelineView').setAttribute('aria-pressed',String(ui.timeline));
-  $('canvas').hidden=ui.timeline;$('timeline').hidden=!ui.timeline;
-  for(const id of ['minus','plus','fit','zoom'])$(id).hidden=ui.timeline;
+  $('workList').setAttribute('aria-pressed',String(ui.workTable));
+  for(const [id,view] of [['networkTime','time'],['networkLogic','logic'],['flowView','flow']])
+    $(id).setAttribute('aria-pressed',String(ui.view===view&&!ui.timeline&&!ui.workTable));
+  $('canvas').hidden=ui.timeline||ui.workTable;$('timeline').hidden=!ui.timeline;$('workTable').hidden=!ui.workTable;
+  for(const id of ['minus','plus','fit','zoom'])$(id).hidden=ui.timeline||ui.workTable;
+  $('exportNetworkData').hidden=!ui.network;
+  for(const id of ['direction','layout','cpm'])$(id).hidden=ui.view!=='flow'||ui.timeline||ui.workTable;
   if(!dataForSelection())ui.selected=null;
   if(ui.timeline)drawTimeline();
+  if(ui.workTable)drawWorkTable();
   renderList();inspector();paintSelection();
 }
-async function display(graph,{fresh=false,change=false,forceLayout=false,fitView=false,critical=ui.critical,timeline=ui.timeline}={}){
+async function display(graph,{fresh=false,change=false,forceLayout=false,fitView=false,critical=ui.critical,timeline=ui.timeline,view=ui.view,workTable=ui.workTable}={}){
   let result, analysisError;
-  try{result=await api.draw(graph,{critical:critical||timeline,forceLayout});}
+  try{result=await api.draw(graph,{critical:critical||timeline,forceLayout,networkView:!timeline&&view!=='flow'?view:null});}
   catch(error){
-    if(!['CYCLE','MISSING_DURATION'].includes(error.code))throw error;
+    if(!['CYCLE','MISSING_DURATION','EMPTY_NETWORK'].includes(error.code))throw error;
     analysisError=error.message;
-    critical=false;timeline=false;
+    critical=false;timeline=false;view='flow';workTable=false;
     result=await api.draw(graph,{forceLayout});
   }
   if(fresh){ui.previous=[];ui.next=[];ui.selected=null;ui.file=null;ui.link=null;changeDirty(false);}
@@ -91,14 +102,17 @@ async function display(graph,{fresh=false,change=false,forceLayout=false,fitView
     ui.next=[];
     changeDirty(true);
   }
-  ui.graph=result.graph;ui.analysis=result.analysis;ui.critical=critical;ui.timeline=timeline;
+  ui.graph=result.graph;ui.analysis=result.analysis;ui.critical=critical;ui.timeline=timeline;ui.view=view;
+  ui.network=result.network||null;
+  ui.workTable=workTable&&Boolean(ui.network);
   const parsed=new DOMParser().parseFromString(result.svg,'image/svg+xml');
   if(parsed.documentElement.localName!=='svg')throw Error('绘图引擎返回了无效的 SVG。');
   $('stage').replaceChildren(document.importNode(parsed.documentElement,true));
   refresh();
   if(fresh||fitView)fit();else frameZoom();
-  say(analysisError || (ui.graph.nodes.length+' 个节点 · '+ui.graph.edges.length+' 条连线'+
-    (ui.analysis?' · 逻辑工期 '+ui.analysis.duration+' 天':'')),Boolean(analysisError));
+  const count=ui.network?ui.network.events.length+' 个事件 · '+ui.network.arrows.filter(a=>a.kind==='activity').length+
+    ' 道工作 · '+ui.network.arrows.filter(a=>a.kind==='dummy').length+' 条虚工作':ui.graph.nodes.length+' 个节点 · '+ui.graph.edges.length+' 条连线';
+  say(analysisError || count+(ui.analysis?' · 逻辑工期 '+ui.analysis.duration+' 天':''),Boolean(analysisError));
 }
 async function edit(operations){await display(await api.edit(ui.graph,operations),{change:true});}
 function renderList(){
@@ -139,15 +153,25 @@ function inspector(){
     return;
   }
   const kind=ui.selected.kind;
+  if(kind==='event'){
+    area.replaceChildren(el('h2','事件 '+selected.id),el('p','最早发生 D'+selected.early+' · 最迟发生 D'+selected.late,'aside-note'));
+    for(const milestone of selected.milestones)area.append(el('p',milestone.label,'aside-note'));
+    return;
+  }
   field(form,'id','编号',selected.id).readOnly=true;
   const label=field(form,'label',kind==='node'?'节点名称':'连线说明',selected.label);
   label.maxLength=kind==='node'?96:80;label.required=kind==='node';
   if(kind==='node'){
-    field(form,'kind','类型',selected.kind,'text',Object.entries(names));
+    const kindInput=field(form,'kind','类型',selected.kind,'text',Object.entries(names));
     const duration=field(form,'duration','工期（天）',selected.duration,'number');
     duration.min=0;duration.max=100000;
+    kindInput.onchange=()=>{
+      if(kindInput.value==='milestone')duration.value='0';
+    };
     const analysis=ui.analysis?.nodes.find(row=>row.id===selected.id);
-    if(analysis)form.append(el('p','最早 D'+analysis.es+' → D'+analysis.ef+' · 总浮时 '+analysis.tf+' 天','aside-note'));
+    const work=ui.network?.arrows.find(row=>row.activityId===selected.id);
+    if(work)form.append(el('p','双代号 '+work.from+'–'+work.to+(work.critical?' · 关键工作':''),'aside-note'));
+    if(analysis)form.append(el('p','最早 D'+analysis.es+' → D'+analysis.ef+' · 总时差 '+analysis.tf+' · 自由时差 '+analysis.ff+' 天','aside-note'));
   }else{
     const choices=ui.graph.nodes.map(n=>[n.id,n.id+' · '+n.label]);
     field(form,'from','起点',selected.from,'text',choices);
@@ -169,6 +193,25 @@ function inspector(){
     }else run(()=>edit([{op:'put-edge',edge:{...selected,label:values.label,from:values.from,to:values.to,lag:Number(values.lag)}}]));
   };
   area.replaceChildren(form);
+}
+function drawWorkTable(){
+  const region=$('workTable');
+  if(!ui.network){region.replaceChildren();return;}
+  const table=el('table',null,'work-grid');
+  const header=table.createTHead().insertRow();
+  for (const text of ['工作代号','工作名称','类型','持续时间','ES','EF','TF','FF']) header.append(el('th',text));
+  const body=table.createTBody();
+  for(const arc of ui.network.arrows.slice().sort((a,b)=>a.from-b.from||a.to-b.to)){
+    const row=body.insertRow();
+    if(arc.critical)row.className='critical-work';
+    row.insertCell().textContent=arc.from+'–'+arc.to;
+    const name=row.insertCell();
+    if(arc.activityId)name.append(button(arc.label,()=>select('node',arc.activityId)));
+    else name.textContent=arc.label;
+    for(const value of [{activity:'工作',lag:'时滞',dummy:'虚工作'}[arc.kind],arc.duration,arc.earlyStart,arc.earlyFinish,arc.totalFloat,arc.freeFloat])
+      row.insertCell().textContent=value;
+  }
+  region.replaceChildren(table);
 }
 function drawTimeline(){
   const area=$('timeline'),analysis=ui.analysis;
@@ -201,6 +244,10 @@ function coordinates(event){
 function newNode(location){
   if(ui.busy||!ui.graph)return;
   const form=$('nodeForm');form.reset();form.querySelector('.form-error').textContent='';
+  if(ui.network)form.elements.duration.value='1';
+  form.elements.kind.onchange=()=>{
+    if(form.elements.kind.value==='milestone')form.elements.duration.value='0';
+  };
   form.elements.id.value='N'+String(ui.graph.nodes.length+1+(ui.graph.nodes.find(n=>n.id==='N'+String(ui.graph.nodes.length+1))?Date.now()%100000:0));
   const position=location?{x:Math.round(location.x-85),y:Math.round(location.y-29)}:
     {x:32+(ui.graph.nodes.length%5)*195,y:28+Math.floor(ui.graph.nodes.length/5)*82};
@@ -228,6 +275,13 @@ function pickConnection(id){
 const canvas=$('canvas');
 canvas.onpointerdown=event=>{
   if(ui.busy||!ui.graph||event.button!==0)return;
+  const activity=event.target.closest('[data-activity]'),marker=event.target.closest('[data-event]');
+  if(marker){select('event',Number(marker.dataset.event));return;}
+  if(activity?.dataset.activity){
+    if(ui.link)pickConnection(activity.dataset.activity);
+    else select('node',activity.dataset.activity);
+    return;
+  }
   const node=event.target.closest('[data-node]'),edge=event.target.closest('[data-edge]');
   if(node&&ui.link){pickConnection(node.dataset.node);return;}
   if(edge){select('edge',edge.dataset.edge);return;}
@@ -260,7 +314,7 @@ function endPointer(event){
   if(d.task&&d.position&&event.type==='pointerup')run(()=>edit([{op:'put-node',node:{...d.task,position:d.position}}]));
 }
 canvas.onpointerup=endPointer;canvas.onpointercancel=endPointer;
-canvas.ondblclick=event=>{if(!event.target.closest('[data-node],[data-edge]')&&ui.graph)newNode(coordinates(event));};
+canvas.ondblclick=event=>{if(!event.target.closest('[data-node],[data-edge],[data-event],[data-activity]')&&ui.graph)newNode(coordinates(event));};
 $('find').oninput=renderList;
 for(const kind of ['node','edge'])$(kind+'List').onclick=()=>{ui.list=kind;renderList();};
 $('add').onclick=()=>newNode();$('cancelAdd').onclick=()=>$('nodeDialog').close();
@@ -270,12 +324,12 @@ $('link').onclick=()=>{
   say(ui.link?(ui.link.from?'选择连线终点 · '+ui.link.from:'选择连线起点'):'已取消连线。');
 };
 const guard=()=>!ui.dirty||confirm('当前网络图尚未保存，继续将放弃本次更改。');
-$('new').onclick=()=>run(async()=>{if(guard())await display(blank(),{fresh:true,critical:false,timeline:false});});
-$('demo').onclick=()=>run(async()=>{if(guard())await display(await api.demo(),{fresh:true,critical:false,timeline:false});});
+$('new').onclick=()=>run(async()=>{if(guard())await display(blank(),{fresh:true,critical:false,timeline:false,view:'flow',workTable:false});});
+$('demo').onclick=()=>run(async()=>{if(guard())await display(await api.demo(),{fresh:true,critical:false,timeline:false,view:'time',workTable:false});});
 $('open').onclick=()=>run(async()=>{
   if(!guard())return;
   const opened=await api.open();
-  if(opened){await display(opened.graph,{fresh:true,critical:false,timeline:false});ui.file=opened.file;changeDirty(false);}
+  if(opened){await display(opened.graph,{fresh:true,critical:false,timeline:false,view:'time',workTable:false});ui.file=opened.file;changeDirty(false);}
 });
 async function save(as){
   if(!ui.graph)return;
@@ -283,10 +337,14 @@ async function save(as){
   if(file){ui.file=file;changeDirty(false);say('图文件已保存。');}
 }
 $('save').onclick=()=>run(()=>save(false));$('saveAs').onclick=()=>run(()=>save(true));
-$('export').onclick=()=>run(async()=>{if(ui.graph&&await api.svg(ui.graph,ui.critical))say('SVG 已导出。');});
+$('export').onclick=()=>run(async()=>{if(ui.graph&&await api.svg(ui.graph,ui.view==='flow'?ui.critical:ui.view))say('SVG 已导出。');});
+$('exportNetworkData').onclick=()=>run(async()=>{if(await api.networkData(ui.graph))say('双代号事件 JSON 已导出。');});
+for(const [id,view] of [['networkTime','time'],['networkLogic','logic'],['flowView','flow']])
+  $(id).onclick=()=>run(()=>display(ui.graph,{view,fitView:true,timeline:false,workTable:false}));
+$('workList').onclick=()=>run(()=>display(ui.graph,{view:ui.view==='flow'?'time':ui.view,timeline:false,workTable:!ui.workTable,fitView:true}));
 $('layout').onclick=()=>run(()=>display({...ui.graph,direction:$('direction').value},{forceLayout:true,fitView:true,change:true}));
 $('cpm').onclick=()=>run(()=>display(ui.graph,{critical:!ui.critical,timeline:false}));
-$('timelineView').onclick=()=>run(()=>display(ui.graph,{timeline:!ui.timeline}));
+$('timelineView').onclick=()=>run(()=>display(ui.graph,{timeline:!ui.timeline,workTable:false,fitView:true}));
 $('fit').onclick=fit;
 for(const [id,gain] of [['plus',1.22],['minus',1/1.22]])$(id).onclick=()=>{ui.zoom=Math.min(4,Math.max(.05,ui.zoom*gain));frameZoom();};
 function history(from,to){
@@ -305,4 +363,4 @@ document.addEventListener('keydown',e=>{
   if(k==='s'){e.preventDefault();$('save').click();}
   if(k==='z'&&!e.target.matches('input,textarea,select')){e.preventDefault();$(e.shiftKey?'redo':'undo').click();}
 });
-run(async()=>display(await api.demo(),{fresh:true,critical:false,timeline:false}));
+run(async()=>display(await api.demo(),{fresh:true,critical:false,timeline:false,view:'time'}));
