@@ -1,0 +1,121 @@
+name: Windows release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.16.0'
+          cache: npm
+      - name: Validate release tag
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($version -notmatch '^\d+\.\d+\.\d+$' -or $env:GITHUB_REF_NAME -cne "v$version") {
+            throw "The tag must match the stable version in package.json."
+          }
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) { throw "The tagged commit must be on main." }
+      - run: npm ci
+      - run: npm test
+      - name: Build Windows packages
+        shell: pwsh
+        run: |
+          $license = Join-Path $env:RUNNER_TEMP 'node-v24.16.0-LICENSE.txt'
+          Invoke-WebRequest 'https://raw.githubusercontent.com/nodejs/node/v24.16.0/LICENSE' -OutFile $license
+          if ((Get-FileHash -LiteralPath $license).Hash -ne '4573185D56580DA2B890BA34A85A409257640F1C5632EADE4300137266194D18') {
+            throw 'Node.js license checksum mismatch.'
+          }
+          npm run build:desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop packaging failed.' }
+          ./scripts/package-cli.ps1 -NodeLicense $license
+      - name: Verify packaged CLI and desktop
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $cliDirectory = Join-Path $env:RUNNER_TEMP 'GridDraft CLI test'
+          $bundle = "dist/GridDraft-CLI-$version-windows-x64.zip"
+          $desktop = "dist/GridDraft-Desktop-$version-x64.exe"
+          Expand-Archive -LiteralPath $bundle -DestinationPath $cliDirectory
+          $cli = Join-Path $cliDirectory 'griddraft.cmd'
+          $plan = Join-Path $cliDirectory 'examples/fuyu-demo.json'
+          $versionFromCli = & $cli --version
+          if ($LASTEXITCODE -ne 0 -or $versionFromCli -cne $version) { throw 'CLI version mismatch.' }
+          $json = & $cli network $plan --format json
+          if ($LASTEXITCODE -ne 0) { throw 'CLI failed to calculate demo network.' }
+          $network = ($json -join "`n") | ConvertFrom-Json
+          if ($network.kind -ne 'activity-on-arrow' -or $network.duration -ne 34) { throw 'Unexpected demo network output.' }
+          & $cli network $plan --out 'dist/GridDraft-Time-Scaled-Example.svg'
+          if ($LASTEXITCODE -ne 0) { throw 'CLI failed to export demo SVG.' }
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.58.2
+          if ($LASTEXITCODE -ne 0) { throw 'Playwright setup failed.' }
+          node test/verify-desktop.cjs $desktop (Join-Path $env:RUNNER_TEMP 'griddraft-ui-proof')
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged desktop smoke test failed.' }
+          Copy-Item -LiteralPath README.md -Destination 'dist/QUICKSTART.md'
+          $assets = @($desktop, $bundle, 'dist/GridDraft-Time-Scaled-Example.svg', 'dist/QUICKSTART.md')
+          $checksums = foreach ($asset in $assets) {
+            $hash = Get-FileHash -LiteralPath $asset -Algorithm SHA256
+            "$($hash.Hash.ToLowerInvariant())  $(Split-Path $asset -Leaf)"
+          }
+          $checksums | Set-Content -LiteralPath 'dist/SHA256SUMS.txt' -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          if-no-files-found: error
+          path: |
+            dist/GridDraft-Desktop-*-x64.exe
+            dist/GridDraft-CLI-*-windows-x64.zip
+            dist/GridDraft-Time-Scaled-Example.svg
+            dist/QUICKSTART.md
+            dist/SHA256SUMS.txt
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-release
+          path: release
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          (cd release && sha256sum -c SHA256SUMS.txt)
+          if draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft); then
+            if [[ "$draft" == false ]]; then
+              echo "Version already published: $GITHUB_REF_NAME"
+              exit 0
+            fi
+          else
+            args=(--generate-notes)
+            notes="docs/release-notes/$GITHUB_REF_NAME.md"
+            if [[ -f "$notes" ]]; then args=(--notes-file "$notes"); fi
+            gh release create "$GITHUB_REF_NAME" --verify-tag --title "GridDraft $GITHUB_REF_NAME" --draft "${args[@]}"
+          fi
+          gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
