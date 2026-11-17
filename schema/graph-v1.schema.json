@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GridDraft Network Graph v1",
+  "type": "object",
+  "required": ["version", "title", "nodes", "edges"],
+  "properties": {
+    "version": {"const": 1},
+    "title": {"type": "string", "minLength": 1, "maxLength": 120},
+    "direction": {"enum": ["RIGHT", "DOWN", "LEFT", "UP"], "default": "RIGHT"},
+    "nodes": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/node"}},
+    "edges": {"type": "array", "maxItems": 5000, "items": {"$ref": "#/$defs/edge"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$"},
+    "days": {"type": "integer", "minimum": 0, "maximum": 100000},
+    "point": {
+      "type": "object", "required": ["x", "y"],
+      "properties": {"x": {"type": "number", "minimum": -1000000, "maximum": 1000000}, "y": {"type": "number", "minimum": -1000000, "maximum": 1000000}}
+    },
+    "node": {
+      "type": "object", "required": ["id", "label"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 96},
+        "kind": {"enum": ["task", "decision", "milestone"], "default": "task"},
+        "duration": {"$ref": "#/$defs/days"},
+        "position": {"$ref": "#/$defs/point"}
+      },
+      "if": {"properties": {"kind": {"const": "milestone"}}, "required": ["kind"]},
+      "then": {"properties": {"duration": {"const": 0}}}
+    },
+    "edge": {
+      "type": "object", "required": ["id", "from", "to"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "from": {"$ref": "#/$defs/id"},
+        "to": {"$ref": "#/$defs/id"},
+        "label": {"type": "string", "maxLength": 80, "default": ""},
+        "lag": {"$ref": "#/$defs/days", "default": 0},
+        "points": {"type": "array", "minItems": 2, "maxItems": 256, "items": {"$ref": "#/$defs/point"}}
+      }
+    }
+  }
+}

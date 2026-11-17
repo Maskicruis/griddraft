@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "title": "审批与返工",
+  "direction": "DOWN",
+  "nodes": [
+    {"id":"draft","label":"编制草案"},
+    {"id":"review","label":"审核","kind":"decision"},
+    {"id":"done","label":"发布","kind":"milestone"}
+  ],
+  "edges": [
+    {"id":"submit","from":"draft","to":"review","label":"提交"},
+    {"id":"reject","from":"review","to":"draft","label":"退回"},
+    {"id":"approve","from":"review","to":"done","label":"通过"}
+  ]
+}

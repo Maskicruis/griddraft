@@ -1,0 +1,308 @@
+'use strict';
+const $=id=>document.getElementById(id);
+const ui={graph:null,file:null,previous:[],next:[],selected:null,list:'node',link:null,critical:false,
+  timeline:false,analysis:null,zoom:1,busy:false,dirty:false,pointer:null};
+const names={task:'工序',decision:'判断',milestone:'里程碑'};
+const api=window.grid;
+const blank=()=>({version:1,title:'未命名网络图',direction:'RIGHT',nodes:[],edges:[]});
+function el(tag,description,css){
+  const value=document.createElement(tag);
+  if(description!=null)value.textContent=description;
+  if(css)value.className=css;
+  return value;
+}
+function button(text,action,css){const b=el('button',text,css);b.type='button';b.onclick=action;return b;}
+function say(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error);}
+async function run(action){
+  if(ui.busy)return;
+  ui.busy=true;
+  $('canvas').setAttribute('aria-busy','true');
+  try{await action();}
+  catch(error){say(error.message,true);}
+  finally{ui.busy=false;$('canvas').setAttribute('aria-busy','false');}
+}
+function changeDirty(dirty){
+  ui.dirty=dirty;
+  $('dirty').textContent=dirty?'有未保存更改':ui.file?'已保存':'本地画布';
+  api.dirty(dirty).catch(error=>say(error.message,true));
+}
+function frameZoom(){
+  const svg=$('stage').firstElementChild;
+  if(!svg)return;
+  const vb=svg.viewBox.baseVal;
+  const width=vb.width*ui.zoom,height=vb.height*ui.zoom;
+  svg.style.width=width+'px';svg.style.height=height+'px';
+  $('stage').style.width=Math.ceil(width)+'px';$('stage').style.height=Math.ceil(height)+'px';
+  $('zoom').textContent=Math.round(ui.zoom*100)+'%';
+}
+function fit(){
+  const svg=$('stage').firstElementChild;
+  if(!svg||ui.timeline)return;
+  const {width,height}=svg.viewBox.baseVal,view=$('canvas');
+  ui.zoom=Math.max(.05,Math.min(1.25,(view.clientWidth-28)/width,(view.clientHeight-36)/height));
+  frameZoom();
+  view.scrollTo(0,0);
+}
+function dataForSelection(){
+  if(!ui.selected)return null;
+  const {kind,id}=ui.selected;
+  return (kind==='node'?ui.graph.nodes:ui.graph.edges).find(item=>item.id===id) || null;
+}
+function select(kind,id){
+  ui.selected=id?{kind,id}:null;
+  if(id&&ui.list!==kind){ui.list=kind;$('find').value='';}
+  paintSelection();
+  renderList();
+  inspector();
+}
+function paintSelection(){
+  $('stage').querySelectorAll('[data-node],[data-edge]').forEach(n=>{
+    n.classList.toggle('selected',n.dataset.node===ui.selected?.id&&ui.selected?.kind==='node'||
+      n.dataset.edge===ui.selected?.id&&ui.selected?.kind==='edge');
+  });
+  $('timeline').querySelectorAll('.time-row[data-id]').forEach(row=>row.classList.toggle('selected',ui.selected?.kind==='node'&&row.dataset.id===ui.selected.id));
+}
+function refresh(){
+  $('title').textContent=ui.graph.title;
+  $('direction').value=ui.graph.direction;
+  $('undo').disabled=!ui.previous.length;$('redo').disabled=!ui.next.length;
+  $('cpm').setAttribute('aria-pressed',String(ui.critical));
+  $('link').setAttribute('aria-pressed',String(ui.link!==null));
+  $('timelineView').setAttribute('aria-pressed',String(ui.timeline));
+  $('canvas').hidden=ui.timeline;$('timeline').hidden=!ui.timeline;
+  for(const id of ['minus','plus','fit','zoom'])$(id).hidden=ui.timeline;
+  if(!dataForSelection())ui.selected=null;
+  if(ui.timeline)drawTimeline();
+  renderList();inspector();paintSelection();
+}
+async function display(graph,{fresh=false,change=false,forceLayout=false,fitView=false,critical=ui.critical,timeline=ui.timeline}={}){
+  let result, analysisError;
+  try{result=await api.draw(graph,{critical:critical||timeline,forceLayout});}
+  catch(error){
+    if(!['CYCLE','MISSING_DURATION'].includes(error.code))throw error;
+    analysisError=error.message;
+    critical=false;timeline=false;
+    result=await api.draw(graph,{forceLayout});
+  }
+  if(fresh){ui.previous=[];ui.next=[];ui.selected=null;ui.file=null;ui.link=null;changeDirty(false);}
+  if(change){
+    ui.previous.push(ui.graph);
+    if(ui.previous.length>120)ui.previous.shift();
+    ui.next=[];
+    changeDirty(true);
+  }
+  ui.graph=result.graph;ui.analysis=result.analysis;ui.critical=critical;ui.timeline=timeline;
+  const parsed=new DOMParser().parseFromString(result.svg,'image/svg+xml');
+  if(parsed.documentElement.localName!=='svg')throw Error('绘图引擎返回了无效的 SVG。');
+  $('stage').replaceChildren(document.importNode(parsed.documentElement,true));
+  refresh();
+  if(fresh||fitView)fit();else frameZoom();
+  say(analysisError || (ui.graph.nodes.length+' 个节点 · '+ui.graph.edges.length+' 条连线'+
+    (ui.analysis?' · 逻辑工期 '+ui.analysis.duration+' 天':'')),Boolean(analysisError));
+}
+async function edit(operations){await display(await api.edit(ui.graph,operations),{change:true});}
+function renderList(){
+  if(!ui.graph)return;
+  $('nodeList').setAttribute('aria-pressed',String(ui.list==='node'));
+  $('edgeList').setAttribute('aria-pressed',String(ui.list==='edge'));
+  const find=$('find').value.trim().toLowerCase();
+  const items=(ui.list==='node'?ui.graph.nodes:ui.graph.edges).filter(n=>[n.id,n.label,n.from,n.to].some(v=>v?.toLowerCase().includes(find)));
+  const scroll=$('objects').scrollTop;
+  $('objects').replaceChildren(...items.map(item=>{
+    const kind=ui.list;
+    const b=button(item.label||(item.from+' → '+item.to),()=>select(kind,item.id),'object'+
+      (ui.selected?.id===item.id&&ui.selected.kind===kind?' active':''));
+    b.dataset.id=item.id;
+    b.append(el('small',item.id+(kind==='node'?' · '+names[item.kind]:'')));
+    return b;
+  }));
+  $('objects').scrollTop=scroll;
+}
+function field(form,key,label,value,type='text',choices){
+  const wrapper=el('label',label),input=el(choices?'select':'input');
+  input.name=key;
+  if(choices)for(const [code,display] of choices)input.add(new Option(display,code));
+  else input.type=type;
+  input.value=value??'';
+  wrapper.append(input);form.append(wrapper);return input;
+}
+function inspector(){
+  if(!ui.graph)return;
+  const selected=dataForSelection(),area=$('properties');
+  const form=el('form');
+  if(!selected){
+    const title=field(form,'title','图名称',ui.graph.title);
+    title.required=true;title.maxLength=120;
+    const save=el('button','修改名称','primary');form.append(save);
+    form.onsubmit=event=>{event.preventDefault();run(()=>edit([{op:'set-title',value:title.value}]));};
+    area.replaceChildren(form,el('p','点击节点或连线查看属性。拖动空白处平移画布。双击空白处可新增节点。','aside-note'));
+    return;
+  }
+  const kind=ui.selected.kind;
+  field(form,'id','编号',selected.id).readOnly=true;
+  const label=field(form,'label',kind==='node'?'节点名称':'连线说明',selected.label);
+  label.maxLength=kind==='node'?96:80;label.required=kind==='node';
+  if(kind==='node'){
+    field(form,'kind','类型',selected.kind,'text',Object.entries(names));
+    const duration=field(form,'duration','工期（天）',selected.duration,'number');
+    duration.min=0;duration.max=100000;
+    const analysis=ui.analysis?.nodes.find(row=>row.id===selected.id);
+    if(analysis)form.append(el('p','最早 D'+analysis.es+' → D'+analysis.ef+' · 总浮时 '+analysis.tf+' 天','aside-note'));
+  }else{
+    const choices=ui.graph.nodes.map(n=>[n.id,n.id+' · '+n.label]);
+    field(form,'from','起点',selected.from,'text',choices);
+    field(form,'to','终点',selected.to,'text',choices);
+    const lag=field(form,'lag','完成到开始时滞（天）',selected.lag,'number');
+    lag.min=0;lag.max=100000;lag.required=true;
+  }
+  const actions=el('div',null,'actions');
+  actions.append(el('button','应用修改','primary'),button('删除',()=>{
+    if(confirm('删除此'+(kind==='node'?'节点及关联连线':'连线')+'？'))run(()=>edit([{op:'remove-'+kind,id:selected.id}]));
+  }));
+  form.append(actions);
+  form.onsubmit=event=>{
+    event.preventDefault();
+    const values=Object.fromEntries(new FormData(form));
+    if(kind==='node'){
+      const duration=values.duration===''?undefined:Number(values.duration);
+      run(()=>edit([{op:'put-node',node:{...selected,label:values.label,kind:values.kind,duration}}]));
+    }else run(()=>edit([{op:'put-edge',edge:{...selected,label:values.label,from:values.from,to:values.to,lag:Number(values.lag)}}]));
+  };
+  area.replaceChildren(form);
+}
+function drawTimeline(){
+  const area=$('timeline'),analysis=ui.analysis;
+  const scrolled=area.scrollTop;
+  if(!analysis){area.replaceChildren(el('p','请录入工期后重新计算。','aside-note'));return;}
+  const board=el('div',null,'time-grid'),head=el('div',null,'time-row time-head');
+  const axis=el('div',null,'time-axis time-track');
+  for(let i=0;i<=5;i++)axis.append(el('span','D'+Math.round(analysis.duration*i/5)));
+  head.append(el('span','工序 / 逻辑开完工'),axis);board.append(head);
+  const nodes=new Map(ui.graph.nodes.map(n=>[n.id,n]));
+  const total=Math.max(1,analysis.duration);
+  for(const row of analysis.nodes){
+    const task=nodes.get(row.id);
+    const line=el('div',null,'time-row');line.dataset.id=row.id;
+    const name=button(task.label,()=>select('node',task.id));
+    name.title=row.id+' · D'+row.es+' → D'+row.ef;
+    const track=el('div',null,'time-track');
+    const bar=el('span',null,'time-bar'+(row.tf===0?' hot':'')+(task.kind==='milestone'?' marker':''));
+    bar.style.left=100*row.es/total+'%';bar.style.width=100*(row.ef-row.es)/total+'%';bar.title=name.title;
+    track.append(bar);
+    line.append(name,track);board.append(line);
+  }
+  area.replaceChildren(board);area.scrollTop=scrolled;
+}
+function coordinates(event){
+  const svg=$('stage').firstElementChild;
+  const p=new DOMPoint(event.clientX,event.clientY);
+  return p.matrixTransform(svg.getScreenCTM().inverse());
+}
+function newNode(location){
+  if(ui.busy||!ui.graph)return;
+  const form=$('nodeForm');form.reset();form.querySelector('.form-error').textContent='';
+  form.elements.id.value='N'+String(ui.graph.nodes.length+1+(ui.graph.nodes.find(n=>n.id==='N'+String(ui.graph.nodes.length+1))?Date.now()%100000:0));
+  const position=location?{x:Math.round(location.x-85),y:Math.round(location.y-29)}:
+    {x:32+(ui.graph.nodes.length%5)*195,y:28+Math.floor(ui.graph.nodes.length/5)*82};
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    if(ui.busy)return;
+    const data=Object.fromEntries(new FormData(form));
+    if(ui.graph.nodes.some(n=>n.id===data.id)){form.querySelector('.form-error').textContent='节点编号已存在。';return;}
+    await run(async()=>{
+      try{
+        await edit([{op:'put-node',node:{...data,position,duration:data.duration===''?undefined:Number(data.duration)}}]);
+        $('nodeDialog').close();select('node',data.id);
+      }catch(error){form.querySelector('.form-error').textContent=error.message;}
+    });
+  };
+  $('nodeDialog').showModal();
+}
+function pickConnection(id){
+  if(!ui.link.from){ui.link.from=id;select('node',id);say('选择连线终点 · '+id);return;}
+  const from=ui.link.from;
+  ui.link=null;
+  const edge={id:'E-'+crypto.randomUUID(),from,to:id,label:'',lag:0};
+  run(async()=>{await edit([{op:'put-edge',edge}]);select('edge',edge.id);});
+}
+const canvas=$('canvas');
+canvas.onpointerdown=event=>{
+  if(ui.busy||!ui.graph||event.button!==0)return;
+  const node=event.target.closest('[data-node]'),edge=event.target.closest('[data-edge]');
+  if(node&&ui.link){pickConnection(node.dataset.node);return;}
+  if(edge){select('edge',edge.dataset.edge);return;}
+  const task=node?ui.graph.nodes.find(n=>n.id===node.dataset.node):null;
+  if(task)select('node',task.id);
+  const start=coordinates(event);
+  ui.pointer={id:event.pointerId,node,task,start,clientX:event.clientX,clientY:event.clientY,
+    scrollLeft:canvas.scrollLeft,scrollTop:canvas.scrollTop,moved:false};
+  canvas.setPointerCapture(event.pointerId);
+};
+canvas.onpointermove=event=>{
+  const d=ui.pointer;
+  if(!d||d.id!==event.pointerId)return;
+  if(Math.hypot(event.clientX-d.clientX,event.clientY-d.clientY)>3)d.moved=true;
+  if(!d.moved)return;
+  canvas.classList.add('dragging');
+  if(!d.task){
+    canvas.scrollLeft=d.scrollLeft+d.clientX-event.clientX;canvas.scrollTop=d.scrollTop+d.clientY-event.clientY;return;
+  }
+  const p=coordinates(event);
+  d.position={x:Math.round(d.task.position.x+p.x-d.start.x),y:Math.round(d.task.position.y+p.y-d.start.y)};
+  d.node.setAttribute('transform','translate('+d.position.x+' '+d.position.y+')');
+};
+function endPointer(event){
+  const d=ui.pointer;
+  if(!d||event.pointerId!==d.id)return;
+  ui.pointer=null;canvas.classList.remove('dragging');
+  if(!d.task&&!d.moved)select(null,null);
+  if(d.node)d.node.setAttribute('transform','translate('+d.task.position.x+' '+d.task.position.y+')');
+  if(d.task&&d.position&&event.type==='pointerup')run(()=>edit([{op:'put-node',node:{...d.task,position:d.position}}]));
+}
+canvas.onpointerup=endPointer;canvas.onpointercancel=endPointer;
+canvas.ondblclick=event=>{if(!event.target.closest('[data-node],[data-edge]')&&ui.graph)newNode(coordinates(event));};
+$('find').oninput=renderList;
+for(const kind of ['node','edge'])$(kind+'List').onclick=()=>{ui.list=kind;renderList();};
+$('add').onclick=()=>newNode();$('cancelAdd').onclick=()=>$('nodeDialog').close();
+$('link').onclick=()=>{
+  ui.link=ui.link?null:{from:ui.selected?.kind==='node'?ui.selected.id:null};
+  $('link').setAttribute('aria-pressed',String(ui.link!==null));
+  say(ui.link?(ui.link.from?'选择连线终点 · '+ui.link.from:'选择连线起点'):'已取消连线。');
+};
+const guard=()=>!ui.dirty||confirm('当前网络图尚未保存，继续将放弃本次更改。');
+$('new').onclick=()=>run(async()=>{if(guard())await display(blank(),{fresh:true,critical:false,timeline:false});});
+$('demo').onclick=()=>run(async()=>{if(guard())await display(await api.demo(),{fresh:true,critical:false,timeline:false});});
+$('open').onclick=()=>run(async()=>{
+  if(!guard())return;
+  const opened=await api.open();
+  if(opened){await display(opened.graph,{fresh:true,critical:false,timeline:false});ui.file=opened.file;changeDirty(false);}
+});
+async function save(as){
+  if(!ui.graph)return;
+  const file=await api.save(ui.graph,as?null:ui.file);
+  if(file){ui.file=file;changeDirty(false);say('图文件已保存。');}
+}
+$('save').onclick=()=>run(()=>save(false));$('saveAs').onclick=()=>run(()=>save(true));
+$('export').onclick=()=>run(async()=>{if(ui.graph&&await api.svg(ui.graph,ui.critical))say('SVG 已导出。');});
+$('layout').onclick=()=>run(()=>display({...ui.graph,direction:$('direction').value},{forceLayout:true,fitView:true,change:true}));
+$('cpm').onclick=()=>run(()=>display(ui.graph,{critical:!ui.critical,timeline:false}));
+$('timelineView').onclick=()=>run(()=>display(ui.graph,{timeline:!ui.timeline}));
+$('fit').onclick=fit;
+for(const [id,gain] of [['plus',1.22],['minus',1/1.22]])$(id).onclick=()=>{ui.zoom=Math.min(4,Math.max(.05,ui.zoom*gain));frameZoom();};
+function history(from,to){
+  return run(async()=>{
+    if(!from.length)return;
+    const previous=ui.graph;
+    await display(from.at(-1));
+    from.pop();to.push(previous);
+    changeDirty(true);refresh();
+  });
+}
+$('undo').onclick=()=>history(ui.previous,ui.next);$('redo').onclick=()=>history(ui.next,ui.previous);
+document.addEventListener('keydown',e=>{
+  if(!(e.ctrlKey||e.metaKey))return;
+  const k=e.key.toLowerCase();
+  if(k==='s'){e.preventDefault();$('save').click();}
+  if(k==='z'&&!e.target.matches('input,textarea,select')){e.preventDefault();$(e.shiftKey?'redo':'undo').click();}
+});
+run(async()=>display(await api.demo(),{fresh:true,critical:false,timeline:false}));

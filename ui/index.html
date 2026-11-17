@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'">
+<title>GridDraft 网络图工作台</title>
+<link rel="stylesheet" href="style.css"><script src="app.js" defer></script>
+</head>
+<body>
+<header class="masthead">
+  <div class="brand"><span aria-hidden="true">◆</span><div><strong>GridDraft</strong><small>网络图工作台</small></div></div>
+  <div class="project-label"><strong id="title">网络图</strong><small id="dirty"></small></div>
+  <div class="actions"><button id="new">新建</button><button id="open">打开 JSON</button><button id="save">保存</button><button id="saveAs">另存</button><button id="export" class="primary">导出 SVG</button></div>
+</header>
+<main>
+  <aside class="objects">
+    <header><h2>节点与连线</h2><button id="add" class="primary">＋ 节点</button></header>
+    <input id="find" type="search" placeholder="搜索编号或名称" aria-label="搜索节点">
+    <div class="tabs"><button id="nodeList" aria-pressed="true">节点</button><button id="edgeList" aria-pressed="false">连线</button></div>
+    <div id="objects"></div>
+    <footer><button id="demo">打开扶余示例</button></footer>
+  </aside>
+  <section class="editor" aria-label="网络画布">
+    <div class="toolbar actions">
+      <button id="undo" aria-label="撤销">↶</button><button id="redo" aria-label="重做">↷</button>
+      <button id="link" aria-pressed="false">连接节点</button>
+      <select id="direction" aria-label="排版方向"><option value="RIGHT">从左到右</option><option value="DOWN">从上到下</option><option value="LEFT">从右到左</option><option value="UP">从下到上</option></select>
+      <button id="layout">自动排版</button><button id="cpm" aria-pressed="false">关键路径</button>
+      <button id="timelineView" aria-pressed="false">时间轴</button>
+      <span class="spacer"></span><button id="minus" aria-label="缩小">−</button><button id="fit">适合窗口</button><button id="plus" aria-label="放大">＋</button>
+    </div>
+    <div id="canvas" tabindex="0" aria-label="可编辑的网络图"><div id="stage"></div></div>
+    <div id="timeline" aria-label="计划时间轴" hidden></div>
+    <footer class="canvas-foot"><span id="status" role="status"></span><span id="zoom"></span></footer>
+  </section>
+  <aside class="properties"><header><h2>属性</h2></header><div id="properties"></div></aside>
+</main>
+<dialog id="nodeDialog"><form id="nodeForm">
+  <h2>新增节点</h2>
+  <label>编号<input name="id" maxlength="64" pattern="[A-Za-z0-9_][A-Za-z0-9_.\-]*" required></label>
+  <label>名称<input name="label" maxlength="96" required></label>
+  <label>类型<select name="kind"><option value="task">工序</option><option value="decision">判断</option><option value="milestone">里程碑</option></select></label>
+  <label>工期（天，可留空）<input name="duration" type="number" min="0" max="100000"></label>
+  <p class="form-error" role="alert"></p>
+  <div class="actions"><button id="cancelAdd" type="button">取消</button><button class="primary">添加节点</button></div>
+</form></dialog>
+</body>
+</html>

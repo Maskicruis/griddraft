@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "title": "扶余一号 · 工序关系示例",
+  "direction": "RIGHT",
+  "nodes": [
+    {"id":"START","label":"示例开工","kind":"milestone","duration":0},
+    {"id":"RD","label":"进场道路","duration":9},
+    {"id":"F08-P","label":"钻孔灌注桩","duration":7},
+    {"id":"F08-B","label":"承台及基础","duration":9},
+    {"id":"F08-L","label":"风机设备吊装","duration":3},
+    {"id":"F08-T","label":"单机调试","duration":2},
+    {"id":"CL-C","label":"线路土建及保护管","duration":14},
+    {"id":"CL-L","label":"电缆敷设及试验","duration":9},
+    {"id":"FINISH","label":"示例范围完成","kind":"milestone","duration":0}
+  ],
+  "edges": [
+    {"id":"e1","from":"START","to":"RD"},
+    {"id":"e2","from":"RD","to":"F08-P"},
+    {"id":"e3","from":"F08-P","to":"F08-B"},
+    {"id":"e4","from":"F08-B","to":"F08-L"},
+    {"id":"e5","from":"F08-L","to":"F08-T"},
+    {"id":"e6","from":"RD","to":"CL-C"},
+    {"id":"e7","from":"F08-B","to":"CL-L"},
+    {"id":"e8","from":"CL-C","to":"CL-L"},
+    {"id":"e9","from":"CL-L","to":"FINISH"},
+    {"id":"e10","from":"F08-T","to":"FINISH"}
+  ]
+}
