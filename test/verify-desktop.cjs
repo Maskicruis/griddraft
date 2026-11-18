@@ -3,10 +3,40 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const os=require('node:os');
 const net=require('node:net');
+const http=require('node:http');
 const path=require('node:path');
 const {spawn,spawnSync}=require('node:child_process');
 const {setTimeout:sleep}=require('node:timers/promises');
 const {chromium}=require(process.env.GRIDDRAFT_PLAYWRIGHT||'playwright');
+
+function modelFixture(){
+  return http.createServer(async(req,res)=>{
+    const data=JSON.parse(Buffer.concat(await Array.fromAsync(req)).toString());
+    assert.equal(req.url,'/v1/chat/completions');
+    assert.equal(req.headers.authorization,'Bearer grid-verification-key');
+    const simulated=data.tools?.length&&!data.messages.some(message=>message.role==='tool');
+    const delta=simulated?{role:'assistant',tool_calls:[{index:0,id:'simulate-1',type:'function',
+      function:{name:'simulate_durations',arguments:'{"changes":[{"id":"RD","days":10}]}'}}]}:
+      {role:'assistant',content:data.tools?.length?'试算工期 35 天。':'OK'};
+    res.writeHead(200,{'Content-Type':'text/event-stream'});
+    for(const [change,finish_reason] of [[delta,null],[{},simulated?'tool_calls':'stop']]){
+      res.write('data: '+JSON.stringify({id:'fixture',object:'chat.completion.chunk',created:1,model:'fixture',
+        choices:[{index:0,delta:change,finish_reason}]})+'\n\n');
+    }
+    res.end('data: [DONE]\n\n');
+  });
+}
+
+async function connectDesktop(port){
+  for(let i=0;i<80;i++){
+    try{
+      const response=await fetch('http://127.0.0.1:'+port+'/json/version');
+      if(response.ok)return chromium.connectOverCDP((await response.json()).webSocketDebuggerUrl);
+    }catch{}
+    await sleep(500);
+  }
+  throw Error('Desktop debug endpoint did not start.');
+}
 
 async function run(){
   const [exe,output]=process.argv.slice(2);
@@ -16,24 +46,72 @@ async function run(){
   await new Promise(r=>portServer.listen(0,'127.0.0.1',r));
   const port=portServer.address().port;
   await new Promise(r=>portServer.close(r));
-  const subprocess=spawn(path.resolve(exe),['--isolated-test','--workspace='+workspace,'--remote-debugging-port='+port],{windowsHide:true,stdio:'ignore'});
+  const launch=()=>spawn(path.resolve(exe),['--isolated-test','--workspace='+workspace,'--remote-debugging-port='+port],{windowsHide:true,stdio:'ignore'});
+  let subprocess=launch();
+  const gateway=modelFixture();
+  await new Promise(resolve=>gateway.listen(0,'127.0.0.1',resolve));
   let browser;
   try{
-    let cdp;
-    for(let i=0;i<80;i++){
-      try{const r=await fetch('http://127.0.0.1:'+port+'/json/version');if(r.ok){cdp=await r.json();break;}}catch{}
-      await sleep(500);
-    }
-    assert.ok(cdp,'Desktop debug endpoint did not start.');
-    browser=await chromium.connectOverCDP(cdp.webSocketDebuggerUrl);
+    browser=await connectDesktop(port);
     const context=browser.contexts()[0];
-    const page=context.pages().find(p=>p.url().startsWith('file:'))||await context.waitForEvent('page');
+    let page=context.pages().find(p=>p.url().startsWith('file:'))||await context.waitForEvent('page');
     const errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     try{await page.locator('#stage [data-event]').first().waitFor({timeout:15000});}
     catch(error){console.error(await page.locator('#status').textContent());throw error;}
     assert.equal(await page.locator('#stage [data-kind="activity"]').count(),7);
     assert.equal(await page.locator('#stage [data-kind="activity"][data-critical="true"]').count(),4);
+    await page.locator('#settingsOpen').click();
+    await page.waitForFunction(()=>document.querySelector('#settingsVersion').textContent.startsWith('V'));
+    await page.locator('#provider').selectOption('compatible');
+    await page.locator('#modelForm input[name=endpoint]').fill('http://127.0.0.1:'+gateway.address().port+'/v1/chat/completions');
+    await page.locator('#modelForm input[name=model]').fill('fixture');
+    await page.locator('#modelForm input[name=key]').fill('grid-verification-key');
+    await page.locator('#modelTest').click();
+    try{
+      await page.waitForFunction(()=>document.querySelector('#modelStatus').textContent.includes('连接成功'),null,{timeout:20000});
+    }catch(error){console.error(await page.locator('#modelStatus').textContent());throw error;}
+    await page.locator('#modelSave').click();
+    await page.waitForFunction(()=>document.querySelector('#modelStatus').textContent.includes('密钥已保存'));
+    assert.ok(!(await fs.readFile(path.join(workspace,'model-settings.json'),'utf8')).includes('grid-verification-key'));
+    await page.screenshot({path:path.join(output,'04-模型配置.png')});
+    await page.locator('[data-settings="plugins"]').click();
+    assert.match(await page.locator('[data-setting-panel="plugins"]').textContent(),/暂无第三方插件/);
+    await page.locator('[data-settings="updates"]').click();
+    assert.equal(await page.locator('#updateCheck').isVisible(),true);
+    await page.locator('#settingsClose').click();
+    const exited=new Promise((resolve,reject)=>{
+      const deadline=setTimeout(()=>reject(Error('Desktop did not close.')),10000);
+      subprocess.once('exit',()=>{clearTimeout(deadline);resolve();});
+    });
+    const shutdown=await browser.newBrowserCDPSession();
+    shutdown.send('Browser.close').catch(()=>{});
+    await exited;
+    await browser.close();
+    subprocess=launch();
+    browser=await connectDesktop(port);
+    const restarted=browser.contexts()[0];
+    page=restarted.pages().find(p=>p.url().startsWith('file:'))||await restarted.waitForEvent('page');
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.locator('#stage [data-event]').first().waitFor();
+    await page.locator('#agentOpen').click();
+    await page.locator('#agentQuestion').fill('把道路工期延长至 10 天，请试算。');
+    await page.locator('#agentSend').click();
+    try{await page.locator('#agentDraft').waitFor({timeout:20000});}
+    catch(error){
+      console.error(await page.locator('#agentMessages').textContent());
+      console.error('Settings file exists:',Boolean(await fs.stat(path.join(workspace,'model-settings.json')).catch(()=>null)));
+      await page.screenshot({path:path.join(output,'debug-restart.png')});
+      throw error;
+    }
+    assert.match(await page.locator('#draftTitle').textContent(),/34 → 35 天/);
+    assert.match(await page.locator('#agentMessages').textContent(),/试算工期 35 天/);
+    assert.match(await page.locator('#status').textContent(),/34 天/);
+    await page.screenshot({path:path.join(output,'05-计划智能体.png')});
+    await page.locator('#draftApply').click();
+    await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('35 天'));
+    await page.locator('#undo').click();
+    await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('34 天'));
     await page.locator('#stage [data-event]').first().locator('text').first().click({timeout:5000});
     assert.match(await page.locator('#properties').textContent(),/事件 1.*最早发生 D0/);
     await page.screenshot({path:path.join(output,'01-双代号时标.png')});
@@ -85,10 +163,12 @@ async function run(){
     await page.waitForFunction(()=>document.querySelectorAll('#stage [data-edge]').length===11);
     assert.equal(await page.locator('#properties select[name=to]').inputValue(),'FINISH');
     assert.deepEqual(errors,[]);
-    const result={timeScaledNetwork:true, structuralNetwork:true, workTableRecalculates:true, guiTimeline:true, drawAndConnect:true, positionUndo:true, criticalPathDays:34};
+    const result={modelSettings:true, credentialsSurviveRestart:true, harnessDraft:true, pluginPlaceholder:true, timeScaledNetwork:true, structuralNetwork:true,
+      workTableRecalculates:true, guiTimeline:true, drawAndConnect:true, positionUndo:true, criticalPathDays:34};
     await fs.writeFile(path.join(output,'gui-verification.json'),JSON.stringify(result,null,2),'utf8');
     console.log(JSON.stringify(result));
   }finally{
+    gateway.closeAllConnections();gateway.close();
     await browser?.close().catch(()=>{});
     if(subprocess.exitCode===null)spawnSync('taskkill',['/PID',String(subprocess.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
   }

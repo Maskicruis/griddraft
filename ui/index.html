@@ -4,13 +4,13 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'">
 <title>GridDraft 网络图工作台</title>
-<link rel="stylesheet" href="style.css"><script src="app.js" defer></script>
+<link rel="stylesheet" href="style.css"><script src="app.js" defer></script><script src="services.js" defer></script>
 </head>
 <body>
 <header class="masthead">
-  <div class="brand"><span aria-hidden="true">◆</span><div><strong>GridDraft</strong><small>网络图工作台</small></div></div>
+  <div class="brand"><img src="griddraft.png" width="36" height="36" alt=""><div><strong>GridDraft</strong><small>网络图工作台</small></div></div>
   <div class="project-label"><strong id="title">网络图</strong><small id="dirty"></small></div>
-  <div class="actions"><button id="new">新建</button><button id="open">打开 JSON</button><button id="save">保存</button><button id="saveAs">另存</button><button id="export" class="primary">导出 SVG</button></div>
+  <div class="actions"><button id="new">新建</button><button id="open">打开 JSON</button><button id="save">保存</button><button id="saveAs">另存</button><button id="export" class="primary">导出 SVG</button><button id="agentOpen">计划智能体</button><button id="settingsOpen">设置</button></div>
 </header>
 <main>
   <aside class="objects">
@@ -52,5 +52,62 @@
   <p class="form-error" role="alert"></p>
   <div class="actions"><button id="cancelAdd" type="button">取消</button><button class="primary">添加节点</button></div>
 </form></dialog>
+<dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle">
+  <header class="service-head"><div><h2 id="settingsTitle">GridDraft 设置</h2><small id="settingsVersion"></small></div>
+    <button id="settingsClose" aria-label="关闭设置">×</button></header>
+  <div class="settings-layout">
+    <nav class="settings-nav" aria-label="设置分类">
+      <button type="button" data-settings="model" aria-pressed="true">模型配置</button>
+      <button type="button" data-settings="updates" aria-pressed="false">软件更新</button>
+      <button type="button" data-settings="plugins" aria-pressed="false">第三方插件</button>
+    </nav>
+    <section data-setting-panel="model" class="settings-section">
+      <h3>模型配置</h3>
+      <p class="aside-note">计划智能体通过 DeepSeek Harness 调用你配置的模型。密钥由系统安全存储保管。</p>
+      <form id="modelForm">
+        <label>服务商<select id="provider" name="provider"><option value="deepseek">DeepSeek 官方 API</option><option value="compatible">OpenAI 兼容 API</option></select></label>
+        <label>API 地址<input name="endpoint" type="url" value="https://api.deepseek.com/anthropic" required></label>
+        <label>模型 ID<input name="model" value="deepseek-flash" placeholder="服务商提供的模型 ID" spellcheck="false" required></label>
+        <label>API 密钥<input name="key" type="password" autocomplete="off" spellcheck="false" placeholder="输入 API 密钥"></label>
+        <label class="inline-check"><input name="removeKey" type="checkbox">清除已保存的密钥</label>
+        <p id="modelStatus" class="service-status" role="status"></p>
+        <div class="actions"><button id="modelTest" type="button">测试连接</button><button id="modelSave" class="primary">保存模型配置</button></div>
+      </form>
+    </section>
+    <section data-setting-panel="updates" class="settings-section" hidden>
+      <h3>软件更新</h3>
+      <p class="aside-note">从 GridDraft 的 GitHub 正式发布检查新版。下载后可打开文件位置，运行校验通过的新版 EXE。</p>
+      <div class="update-card">
+        <strong id="updateStatus" role="status">等待检查</strong>
+        <progress id="updateProgress" max="100" value="0" hidden></progress>
+        <pre id="updateNotes" hidden></pre>
+      </div>
+      <div class="actions"><button id="showRelease">发布页面</button><button id="updateCheck">检查更新</button>
+        <button id="updateDownload" class="primary" hidden>下载新版</button><button id="updateReveal" hidden>打开文件位置</button></div>
+    </section>
+    <section data-setting-panel="plugins" class="settings-section" hidden>
+      <h3>第三方插件</h3>
+      <p class="aside-note">预留第三方集成入口。</p>
+      <div class="plugin-empty"><strong>暂无第三方插件</strong><span>可在未来版本中接入计划导入、数据校验和图纸导出扩展。</span></div>
+    </section>
+  </div>
+</dialog>
+<dialog id="agentDialog" class="agent-dialog" aria-labelledby="agentTitle">
+  <header class="service-head"><div><h2 id="agentTitle">计划智能体</h2><small>DeepSeek Harness</small></div>
+    <div class="actions"><button id="agentReset">新对话</button><button id="agentClose" aria-label="关闭计划智能体">×</button></div></header>
+  <div id="agentContext" class="agent-context"></div>
+  <div id="agentMessages" class="agent-messages" role="log" aria-label="计划对话"></div>
+  <section id="agentDraft" class="agent-draft" hidden aria-label="试算草稿">
+    <strong id="draftTitle"></strong><ul id="draftChanges"></ul>
+    <button id="draftApply" class="primary">应用到当前计划</button>
+  </section>
+  <form id="agentForm" class="agent-form">
+    <label for="agentQuestion">工期或关键线路问题</label>
+    <textarea id="agentQuestion" name="question" required maxlength="2500" placeholder="例如：把进场道路工期改成 10 天，试算总工期。"></textarea>
+    <p class="aside-note">提问时，模型服务可接收相关工序与计算结果。</p>
+    <div class="actions"><button id="agentSettings" type="button">模型设置</button><span class="spacer"></span>
+      <button id="agentStop" type="button" hidden>停止</button><button id="agentSend" class="primary">发送</button></div>
+  </form>
+</dialog>
 </body>
 </html>

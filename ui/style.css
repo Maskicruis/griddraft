@@ -7,7 +7,7 @@ button:disabled{opacity:.47;cursor:default}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #228dc1;outline-offset:1px}
 .primary{background:#12658f;color:white;border-color:#12658f;font-weight:650}.primary:hover{background:#0d5478}
 .masthead{display:grid;grid-template-columns:218px 1fr auto;align-items:center;background:#fff;border-bottom:1px solid var(--border);padding:0 15px;gap:12px}
-.brand{display:flex;align-items:center;gap:10px}.brand>span{color:white;background:#12658f;border-radius:8px;width:36px;height:36px;display:grid;place-items:center}
+.brand{display:flex;align-items:center;gap:10px}.brand img{flex:none}
 .brand strong{font-size:19px}.brand small,.project-label small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
 .project-label{min-width:0}.project-label strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .actions{display:flex;gap:6px;align-items:center}.spacer{flex:1}
@@ -57,3 +57,29 @@ dialog label{display:grid;gap:5px;margin-top:10px;font-size:13px}dialog .actions
 .time-bar{position:absolute;height:10px;border-radius:3px;top:4px;background:#388fb1;min-width:4px}
 .time-bar.hot{background:#ba534e}.time-bar.marker{width:9px!important;transform:rotate(45deg);border-radius:0}
 @media(max-width:1140px){main{grid-template-columns:176px minmax(0,1fr) 208px}.masthead{grid-template-columns:176px 1fr auto}}
+.settings-dialog,.agent-dialog{color:inherit;padding:0;border-radius:14px;box-shadow:0 18px 65px #14294032}
+.settings-dialog{width:min(750px,91vw);max-height:86vh}
+.service-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.service-head h2{font-size:17px}.service-head small{font-size:11px;color:var(--muted)}
+.service-head button[aria-label]{font-size:20px;line-height:20px;padding:4px 9px}
+.settings-layout{display:grid;grid-template-columns:151px minmax(0,1fr);min-height:360px}
+.settings-nav{display:grid;align-content:start;gap:5px;padding:13px;background:#f1f6fb;border-right:1px solid var(--border)}
+.settings-nav button{text-align:left;font-size:13px}.settings-section{padding:18px 21px 21px}
+.settings-section h3{font-size:16px;margin:0}.settings-section p,.settings-section button{font-size:13px}
+.settings-section .inline-check{display:flex;align-items:center;gap:8px;color:var(--muted)}
+.service-status{min-height:1.25em;margin:10px 0;color:var(--muted)}.service-status.error,.update-card .error{color:#922f27}
+.update-card,.plugin-empty{border:1px solid var(--border);border-radius:9px;background:var(--bg);padding:14px;margin:15px 0}
+.update-card pre{white-space:pre-wrap;margin:12px 0 0;max-height:210px;overflow:auto;font:inherit;font-size:12px}
+.update-card progress{display:block;width:100%;margin-top:10px;accent-color:var(--accent)}
+.plugin-empty span{display:block;color:var(--muted);font-size:13px;margin-top:8px}
+.agent-dialog{width:min(440px,92vw);position:fixed;inset:70px 12px 12px auto;margin:0;max-height:calc(100vh - 82px)}
+.agent-dialog[open]{display:flex;flex-direction:column}.agent-dialog::backdrop{background:#162a4839}
+.agent-context{color:var(--muted);font-size:12px;padding:9px 17px;background:#eef5fb}
+.agent-messages{flex:1;min-height:120px;overflow:auto;padding:13px 16px;background:#fbfdff}
+.agent-message{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;margin:0 0 10px;font-size:13px;padding:9px 12px;border-radius:8px;background:#f0f5f9}
+.agent-message.user{background:#e1f1fa;margin-left:22px}.agent-message.tool{color:var(--muted);font-size:11px;background:transparent;padding-block:2px}
+.agent-form,.agent-draft{padding:11px 16px;border-top:1px solid var(--border)}
+.agent-form label{margin:0 0 6px}.agent-form textarea{min-height:63px;max-height:150px;width:100%;resize:vertical;border:1px solid var(--border);border-radius:7px;padding:8px 10px;color:inherit;font:inherit;font-size:13px}
+.agent-form textarea:focus-visible{outline:2px solid #228dc1;outline-offset:1px}
+.agent-form p,.agent-form button,.agent-draft{font-size:12px}.agent-form p{margin:5px 0 9px}
+.agent-draft{background:#eaf5fb;flex:none}.agent-draft ul{max-height:80px;overflow:auto;margin:5px 0 9px;padding-left:18px}

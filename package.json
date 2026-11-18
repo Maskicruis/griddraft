@@ -2,25 +2,93 @@
   "name": "griddraft",
   "productName": "GridDraft",
   "description": "Desktop and command-line editor for directed network diagrams",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "author": "GridDraft contributors",
   "main": "src/engine.cjs",
-  "bin": { "griddraft": "./bin/griddraft.cjs" },
-  "engines": { "node": ">=22" },
-  "files": ["src/*.cjs", "bin", "schema", "examples", "docs", "README.md", "LICENSE", "THIRD_PARTY.md"],
+  "bin": {
+    "griddraft": "./bin/griddraft.cjs"
+  },
+  "engines": {
+    "node": ">=24.9.0"
+  },
+  "files": [
+    "src/*.cjs",
+    "src/*.mjs",
+    "bin",
+    "schema",
+    "examples",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY.md"
+  ],
   "scripts": {
     "start": "electron desktop.cjs",
     "test": "node --test test/*.test.cjs",
     "build:desktop": "electron-builder --win portable"
   },
-  "dependencies": { "elkjs": "0.12.1" },
-  "devDependencies": { "electron": "44.3.0", "electron-builder": "26.15.3" },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-agent-loop": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-anonymous-user-id": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-atomic-write": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-attachment": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-authorization": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-credentials": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-deepseek-llm-api-extensions": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-error": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-fs": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-fs-patch": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-home-paths": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-launch-environment": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-llm-deepseek": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-llm-deepseek-api-key": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-sandbox": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-scope": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-session-persistence": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-session-projection": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-tool-executor-native": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-user-approval": "0.2.2-rc.3",
+    "elkjs": "0.12.1",
+    "eventsource-parser": "3.1.1"
+  },
+  "devDependencies": {
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3"
+  },
   "build": {
     "appId": "org.griddraft.desktop",
-    "extraMetadata": { "main": "desktop.cjs" },
-    "files": ["desktop.cjs", "preload.cjs", "src/**", "ui/**", "examples/**", "schema/**", "LICENSE", "THIRD_PARTY.md", "package.json"],
-    "win": { "target": ["portable"], "signAndEditExecutable": false },
-    "portable": { "artifactName": "GridDraft-Desktop-${version}-x64.exe", "unpackDirName": "griddraft-020" }
+    "extraMetadata": {
+      "main": "desktop.cjs"
+    },
+    "files": [
+      "desktop.cjs",
+      "preload.cjs",
+      "src/**",
+      "ui/**",
+      "examples/**",
+      "schema/**",
+      "LICENSE",
+      "THIRD_PARTY.md",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "ui/griddraft.ico",
+      "signExecutable": false
+    },
+    "portable": {
+      "artifactName": "GridDraft-Desktop-${version}-x64.exe",
+      "unpackDirName": "griddraft-030"
+    }
   }
 }

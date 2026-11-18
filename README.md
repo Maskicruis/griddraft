@@ -15,6 +15,15 @@ GridDraft 是一款独立的施工进度网络图工具。桌面端和 CLI 从�
 
 计算支持无环的完成到开始关系（FS）、非负整数天时滞，以及零工期里程碑。事件编号随网络重新生成，跨系统关联使用原始 `activityId`。工期由逻辑约束推算，资源、班组、天气、现场进度及日历约束尚未参与计算。包含反馈环或缺少工期的源图可在「流程编辑」中修改。扶余示例的 34 天是演示计算值。
 
+## 计划智能体与设置
+
+1. 在「设置 → 模型配置」选择 DeepSeek 官方 API 或 OpenAI 兼容 API，填写 API 地址、服务商的完整模型 ID 和密钥。官方模式默认 `https://api.deepseek.com/anthropic`。以 SiliconFlow 为例，兼容模式填写 `https://api.siliconflow.cn/v1` 及该平台提供的模型 ID。选择支持工具调用的模型。
+2. 点击「测试连接」，成功后保存。密钥通过系统安全存储加密，适用于同一用户继续使用。更换服务地址后填写对应的密钥。
+3. 打开「计划智能体」。可输入「查当前关键线路」或「把进场道路改为 10 天，试算总工期」。界面实时显示工具调用和答复。应用试算草稿前会检查计划是否已变化，应用后可撤销。
+4. 从「设置 → 软件更新」查看 GitHub 新版、下载和校验 EXE，保存工作后手动启动新版程序。「第三方插件」保留了后续扩展的入口。
+
+桌面端嵌入 DeepSeek Harness 的官方代理循环和模型适配器，注册了工期查询、工序查询和工期试算工具。运行时按请求向所配置的模型服务发送问题、近期对话和工作所需的计划数据。[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness/tree/dsh-v0.2.2-rc.3)
+
 ## 命令行
 
 Windows CLI ZIP 解压后运行 griddraft.cmd，无需另装 Node.js。跨平台可从源码运行 node bin/griddraft.cjs 或用 npm link 将命令加入 PATH。
@@ -45,4 +54,4 @@ Windows CLI ZIP 解压后运行 griddraft.cmd，无需另装 Node.js。跨平台
 
 ## 开发与构建
 
-需要 Node.js 22 或以上。执行 npm ci、npm test 和 npm start。Windows 便携版用 npm run build:desktop 构建。引擎接口可直接通过 require('./src/engine.cjs') 调用。示例只是用于验证图编辑与计算的演示数据。
+需要 Node.js 24.9 或以上。执行 npm ci、npm test 和 npm start。Windows 便携版用 npm run build:desktop 构建。引擎接口可直接通过 require('./src/engine.cjs') 调用。示例只是用于验证图编辑与计算的演示数据。

@@ -12,11 +12,11 @@ $target = [IO.Path]::GetFullPath($Output)
 New-Item -ItemType Directory -Path $target -Force | Out-Null
 $stage = Join-Path $target ('cli-stage-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $stage | Out-Null
-foreach ($file in @('bin','src','examples','schema','docs','LICENSE','README.md','THIRD_PARTY.md','package.json')) {
+foreach ($file in @('bin','src','examples','schema','docs','LICENSE','README.md','THIRD_PARTY.md','package.json','package-lock.json')) {
   Copy-Item -LiteralPath (Join-Path $root $file) -Destination $stage -Recurse
 }
-New-Item -ItemType Directory -Path (Join-Path $stage 'node_modules') | Out-Null
-Copy-Item -LiteralPath (Join-Path $root 'node_modules/elkjs') -Destination (Join-Path $stage 'node_modules') -Recurse
+npm ci --prefix $stage --omit=dev --ignore-scripts --no-audit --no-fund
+if ($LASTEXITCODE -ne 0) { throw 'Installing packaged runtime dependencies failed.' }
 Copy-Item -LiteralPath $node -Destination (Join-Path $stage 'node.exe')
 Copy-Item -LiteralPath $NodeLicense -Destination (Join-Path $stage 'LICENSE.node.txt')
 $launcher = @'

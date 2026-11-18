@@ -1,9 +1,19 @@
 'use strict';
 const {contextBridge,ipcRenderer}=require('electron');
-contextBridge.exposeInMainWorld('grid',Object.fromEntries(['demo','draw','edit','open','save','svg','networkData','dirty'].map(name=>[
+const routes=['demo','draw','edit','open','save','svg','networkData','dirty','modelSettings','modelSave','modelTest',
+  'agentRun','agentStop','updateCheck','updateDownload','updateReveal','releasePage'];
+const api=Object.fromEntries(routes.map(name=>[
   name,async(...args)=>{
     const result=await ipcRenderer.invoke('grid:'+name,...args);
     if(!result.ok)throw Object.assign(new Error(result.error),{code:result.code});
     return result.value;
   }
-])));
+]));
+for(const name of ['agentEvent','updateProgress']){
+  api[name]=callback=>{
+    const listener=(_event,data)=>callback(data);
+    ipcRenderer.on('grid:'+name,listener);
+    return ()=>ipcRenderer.removeListener('grid:'+name,listener);
+  };
+}
+contextBridge.exposeInMainWorld('grid',api);

@@ -103,6 +103,7 @@ async function display(graph,{fresh=false,change=false,forceLayout=false,fitView
     changeDirty(true);
   }
   ui.graph=result.graph;ui.analysis=result.analysis;ui.critical=critical;ui.timeline=timeline;ui.view=view;
+  if(fresh)document.dispatchEvent(new Event('griddraft:plan-opened'));
   ui.network=result.network||null;
   ui.workTable=workTable&&Boolean(ui.network);
   const parsed=new DOMParser().parseFromString(result.svg,'image/svg+xml');
