@@ -98,16 +98,21 @@
   <div id="agentContext" class="agent-context"></div>
   <div id="agentMessages" class="agent-messages" role="log" aria-label="计划对话"></div>
   <section id="agentDraft" class="agent-draft" hidden aria-label="试算草稿">
-    <strong id="draftTitle"></strong><ul id="draftChanges"></ul>
+    <strong id="draftTitle"></strong><ul id="draftChanges"></ul><p id="draftIssues" class="form-error"></p>
     <button id="draftApply" class="primary">应用到当前计划</button>
+    <button id="draftPreview">预览草稿</button>
   </section>
   <form id="agentForm" class="agent-form">
     <label for="agentQuestion">工期或关键线路问题</label>
-    <textarea id="agentQuestion" name="question" required maxlength="2500" placeholder="例如：把进场道路工期改成 10 天，试算总工期。"></textarea>
+    <textarea id="agentQuestion" name="question" required maxlength="2500" placeholder="例如：在进场道路后插入质量验收，再接回原来的后续工序。"></textarea>
     <p class="aside-note">提问时，模型服务可接收相关工序与计算结果。</p>
     <div class="actions"><button id="agentSettings" type="button">模型设置</button><span class="spacer"></span>
       <button id="agentStop" type="button" hidden>停止</button><button id="agentSend" class="primary">发送</button></div>
   </form>
+</dialog>
+<dialog id="draftDialog" class="preview-dialog" aria-label="网络图草稿预览">
+  <header class="service-head"><h2>网络图草稿预览</h2><button id="previewClose">关闭</button></header>
+  <div id="draftCanvas"></div>
 </dialog>
 </body>
 </html>

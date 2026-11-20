@@ -14,12 +14,33 @@ function modelFixture(){
     const data=JSON.parse(Buffer.concat(await Array.fromAsync(req)).toString());
     assert.equal(req.url,'/v1/chat/completions');
     assert.equal(req.headers.authorization,'Bearer grid-verification-key');
-    const simulated=data.tools?.length&&!data.messages.some(message=>message.role==='tool');
-    const delta=simulated?{role:'assistant',tool_calls:[{index:0,id:'simulate-1',type:'function',
-      function:{name:'simulate_durations',arguments:'{"changes":[{"id":"RD","days":10}]}'}}]}:
-      {role:'assistant',content:data.tools?.length?'试算工期 35 天。':'OK'};
+    const lastUser=data.messages.findLastIndex(message=>message.role==='user');
+    const prompt=String(data.messages[lastUser]?.content);
+    const completed=data.messages.slice(lastUser+1).filter(message=>message.role==='tool').length;
+    let command=null,answer=data.tools?.length?'试算工期 35 天。':'OK';
+    if(data.tools?.length&&completed===0){
+      if(prompt.includes('插入验收')){
+        command={name:'edit_network',arguments:JSON.stringify({operations:[
+          {op:'put-node',node:{id:'QC',label:'质量验收',duration:2}},
+          {op:'remove-edge',id:'e2'},
+          {op:'put-edge',edge:{id:'rd-qc',from:'RD',to:'QC'}},
+          {op:'put-edge',edge:{id:'qc-p',from:'QC',to:'F08-P'}}
+        ]})};
+      }else if(prompt.includes('刚才新增')){
+        command={name:'edit_network',arguments:JSON.stringify({operations:[
+          {op:'put-node',node:{id:'QC',label:'道路验收',duration:4}}
+        ]})};
+      }else command={name:'simulate_durations',arguments:'{"changes":[{"id":"RD","days":10}]}'};
+    }
+    if(prompt.includes('刚才新增')&&completed===1){
+      command={name:'interface_action',arguments:'{"action":"view","view":"table"}'};
+    }
+    if(prompt.includes('插入验收'))answer='已插入验收工序，工期 36 天。';
+    if(prompt.includes('刚才新增'))answer='道路验收改为 4 天，草稿总工期 38 天。';
+    const delta=command?{role:'assistant',tool_calls:[{index:0,id:'call-'+data.messages.length,type:'function',function:command}]}:
+      {role:'assistant',content:answer};
     res.writeHead(200,{'Content-Type':'text/event-stream'});
-    for(const [change,finish_reason] of [[delta,null],[{},simulated?'tool_calls':'stop']]){
+    for(const [change,finish_reason] of [[delta,null],[{},command?'tool_calls':'stop']]){
       res.write('data: '+JSON.stringify({id:'fixture',object:'chat.completion.chunk',created:1,model:'fixture',
         choices:[{index:0,delta:change,finish_reason}]})+'\n\n');
     }
@@ -112,6 +133,27 @@ async function run(){
     await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('35 天'));
     await page.locator('#undo').click();
     await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('34 天'));
+    await page.locator('#agentQuestion').fill('在道路后插入验收，然后接回桩基。');
+    await page.locator('#agentSend').click();
+    await page.waitForFunction(()=>document.querySelector('#draftTitle').textContent.includes('36 天'));
+    await page.locator('#draftPreview').click();
+    await page.locator('#draftCanvas [data-kind="activity"]').first().waitFor();
+    assert.equal(await page.locator('#draftCanvas [data-kind="activity"]').count(),8);
+    assert.match(await page.locator('#status').textContent(),/34 天/);
+    await page.locator('#previewClose').click();
+    await page.locator('#agentQuestion').fill('把刚才新增那道改为4天，名称改为道路验收，并展示工作表。');
+    await page.locator('#agentSend').click();
+    await page.waitForFunction(()=>document.querySelector('#draftTitle').textContent.includes('38 天'));
+    assert.match(await page.locator('#draftChanges').textContent(),/QC.*道路验收/);
+    await page.screenshot({path:path.join(output,'06-连续对话编辑网络.png')});
+    await page.locator('#draftApply').click();
+    await page.locator('#workTable').getByRole('button',{name:'道路验收',exact:true}).waitFor();
+    await page.locator('#agentClose').click();
+    await page.locator('#workTable').getByRole('button',{name:'道路验收',exact:true}).click();
+    assert.equal(await page.locator('#properties input[name=duration]').inputValue(),'4');
+    await page.locator('#undo').click();
+    await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('34 天'));
+    await page.locator('#networkTime').click();
     await page.locator('#stage [data-event]').first().locator('text').first().click({timeout:5000});
     assert.match(await page.locator('#properties').textContent(),/事件 1.*最早发生 D0/);
     await page.screenshot({path:path.join(output,'01-双代号时标.png')});
@@ -163,7 +205,8 @@ async function run(){
     await page.waitForFunction(()=>document.querySelectorAll('#stage [data-edge]').length===11);
     assert.equal(await page.locator('#properties select[name=to]').inputValue(),'FINISH');
     assert.deepEqual(errors,[]);
-    const result={modelSettings:true, credentialsSurviveRestart:true, harnessDraft:true, pluginPlaceholder:true, timeScaledNetwork:true, structuralNetwork:true,
+    const result={modelSettings:true,credentialsSurviveRestart:true,harnessDraft:true,fullNetworkEditing:true,
+      multiTurnContext:true,draftPreview:true,pluginPlaceholder:true,timeScaledNetwork:true,structuralNetwork:true,
       workTableRecalculates:true, guiTimeline:true, drawAndConnect:true, positionUndo:true, criticalPathDays:34};
     await fs.writeFile(path.join(output,'gui-verification.json'),JSON.stringify(result,null,2),'utf8');
     console.log(JSON.stringify(result));

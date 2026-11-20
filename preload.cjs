@@ -1,7 +1,7 @@
 'use strict';
 const {contextBridge,ipcRenderer}=require('electron');
 const routes=['demo','draw','edit','open','save','svg','networkData','dirty','modelSettings','modelSave','modelTest',
-  'agentRun','agentStop','updateCheck','updateDownload','updateReveal','releasePage'];
+  'agentRun','agentStop','agentReset','agentApply','agentPreview','updateCheck','updateDownload','updateReveal','releasePage'];
 const api=Object.fromEntries(routes.map(name=>[
   name,async(...args)=>{
     const result=await ipcRenderer.invoke('grid:'+name,...args);

@@ -83,3 +83,6 @@ dialog label{display:grid;gap:5px;margin-top:10px;font-size:13px}dialog .actions
 .agent-form textarea:focus-visible{outline:2px solid #228dc1;outline-offset:1px}
 .agent-form p,.agent-form button,.agent-draft{font-size:12px}.agent-form p{margin:5px 0 9px}
 .agent-draft{background:#eaf5fb;flex:none}.agent-draft ul{max-height:80px;overflow:auto;margin:5px 0 9px;padding-left:18px}
+.agent-draft .form-error:empty{display:none}.agent-draft button{font-size:12px}
+.preview-dialog{width:90vw;max-width:1500px;padding:0;max-height:88vh}
+#draftCanvas{overflow:auto;max-height:75vh;padding:12px}

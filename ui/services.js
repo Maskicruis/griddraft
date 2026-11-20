@@ -130,8 +130,10 @@ api.updateProgress(percent=>{
   statusLine('updateStatus','下载新版 · '+percent+'%');
 });
 
-const conversation = {history:[], running:false, output:null, draft:null, planStamp:null, generation:0, activeGeneration:null};
-const toolNames={inspect_schedule:'计算工期和关键工作',list_tasks:'查找工序和紧前关系',simulate_durations:'试算工期变更'};
+const conversation = {running:false,output:null,draft:null,actions:[],planStamp:null,generation:0,activeGeneration:null,started:false};
+const toolNames={inspect_schedule:'检查当前网络',list_tasks:'查找工序',list_links:'查找连线',
+  simulate_durations:'试算工期变更',edit_network:'修改网络图草稿',replace_network:'创建完整网络图',
+  undo_draft:'撤销草稿修改',discard_draft:'放弃草稿',interface_action:'准备界面操作'};
 
 function appendMessage(text,role) {
   const message=el('p',text,'agent-message '+role);
@@ -150,30 +152,45 @@ function showDraft(draft, stamp) {
   conversation.planStamp=stamp;
   $('agentDraft').hidden=!draft;
   if(!draft)return;
-  $('draftTitle').textContent='工期试算 '+(draft.before??'待计算')+' → '+draft.after+' 天';
-  $('draftChanges').replaceChildren(...draft.changes.map(change=>el('li',change.id+' '+change.label+'　'+(change.before??'未填')+' → '+change.days+' 天')));
+  $('draftTitle').textContent='网络图草稿 · '+draft.changes.length+' 项变更 · 工期 '+(draft.before??'待计算')+' → '+(draft.after??'待计算')+' 天';
+  $('draftChanges').replaceChildren(...draft.changes.map(change=>el('li',change.description)));
+  $('draftIssues').textContent=draft.issues.map(issue=>issue.message).join('；');
 }
 
 function resetConversation() {
-  conversation.history=[];
+  api.agentReset().catch(error=>appendMessage(error.message,'assistant'));
+  conversation.actions=[];
+  conversation.started=false;
   conversation.generation++;
   conversation.output=null;
   showDraft(null,null);
   $('agentMessages').replaceChildren();
-  appendMessage('可以查询当前计划的关键线路，或试算指定工序工期变化。','assistant');
+  appendMessage('可以创建网络、增删工序和连线、连续修改草稿，也可切换视图、定位、保存和导出。','assistant');
 }
 
+function updateAgentContext(){
+  if(!ui.graph)return;
+  const names={time:'双代号时标',logic:'双代号结构',flow:'流程编辑'};
+  const selected=dataForSelection();
+  $('agentContext').textContent=ui.graph.title+' · '+(ui.timeline?'时间轴':ui.workTable?'工作表':names[ui.view])+
+    (selected?' · 选中 '+(selected.label||selected.id):'');
+}
+document.addEventListener('griddraft:context-changed',updateAgentContext);
 $('agentOpen').onclick=()=>{
   if(!ui.graph)return;
-  $('agentContext').textContent='当前计划 · '+ui.graph.title;
-  $('agentDialog').showModal();
+  updateAgentContext();
+  if(!$('agentDialog').open)$('agentDialog').show();
   $('agentQuestion').focus();
 };
 $('agentClose').onclick=()=>$('agentDialog').close();
 $('agentReset').onclick=resetConversation;
 document.addEventListener('griddraft:plan-opened',()=>{
   if(conversation.running)api.agentStop().catch(()=>{});
-  resetConversation();
+  conversation.generation++;
+  conversation.output=null;conversation.actions=[];
+  showDraft(null,null);
+  if(conversation.started)appendMessage('已切换当前网络图。后续操作以新打开的图为准。','tool');
+  updateAgentContext();
 });
 resetConversation();
 
@@ -195,25 +212,38 @@ $('agentForm').onsubmit=async event=>{
   event.preventDefault();
   const question=$('agentQuestion').value.trim();
   if(!question||!ui.graph||conversation.running)return;
-  showDraft(null,null);
   const generation=conversation.generation;
   const stamp=JSON.stringify(ui.graph);
   const plan=ui.graph;
   conversation.running=true;
+  conversation.started=true;
   conversation.activeGeneration=generation;
   $('agentSend').disabled=$('agentReset').disabled=true;
+  $('draftApply').disabled=$('draftPreview').disabled=true;
   $('agentStop').hidden=false;
   $('agentQuestion').value='';
   appendMessage(question,'user');
   const working=appendMessage('正在读取当前计划…','tool');
   conversation.output=appendMessage('','assistant');
   try{
-    const result=await api.agentRun(plan,question,conversation.history);
+    const selected=dataForSelection();
+    const selection=ui.selected?{...ui.selected,details:selected}:null;
+    if(selection?.kind==='event'){
+      const arrows=ui.network.arrows.filter(arrow=>arrow.from===selection.id||arrow.to===selection.id);
+      selection.relatedArrows=arrows.slice(0,100);
+      selection.relatedCount=arrows.length;
+    }
+    const context={view:ui.timeline?'timeline':ui.workTable?'table':ui.view,selection,
+      canUndo:ui.previous.length>0,canRedo:ui.next.length>0};
+    const result=await api.agentRun(plan,question,context);
     if(generation!==conversation.generation)return;
     if(!conversation.output?.textContent)appendMessage(result.answer,'assistant');
-    conversation.history.push({role:'user',text:question},{role:'assistant',text:result.answer});
-    conversation.history=conversation.history.slice(-6);
     showDraft(result.draft,stamp);
+    conversation.actions=result.actions;
+    if(!result.draft){
+      if(JSON.stringify(ui.graph)===stamp)await run(()=>executeInterfaceActions(result.actions));
+      else if(result.actions.length)appendMessage('当前图已变化，请重新请求界面操作。','assistant');
+    }
   }catch(error){
     if(generation===conversation.generation){
       appendMessage(error.message,'assistant');
@@ -226,6 +256,7 @@ $('agentForm').onsubmit=async event=>{
     conversation.running=false;
     conversation.activeGeneration=null;
     $('agentSend').disabled=$('agentReset').disabled=false;
+    $('draftApply').disabled=$('draftPreview').disabled=false;
     $('agentStop').hidden=true;
   }
 };
@@ -238,13 +269,60 @@ $('draftApply').onclick=()=>{
     return;
   }
   run(async()=>{
-    const operations=conversation.draft.changes.map(change=>{
-      const task=ui.graph.nodes.find(item=>item.id===change.id);
-      return {op:'put-node',node:{...task,duration:change.days}};
-    });
-    await edit(operations);
+    const graph=await api.agentApply(ui.graph,conversation.draft.id);
+    await display(graph,{change:true,fitView:true});
     showDraft(null,null);
-    appendMessage('试算草稿已应用，可使用撤销回到原计划。','assistant');
-    $('agentDialog').close();
+    appendMessage('网络图草稿已应用，可继续对话或使用撤销。','assistant');
+    const actions=conversation.actions;
+    conversation.actions=[];
+    await executeInterfaceActions(actions);
   });
 };
+
+async function executeInterfaceActions(actions){
+  for(const action of actions){
+    switch(action.action){
+      case 'view':{
+        const extra=action.view==='timeline'?{timeline:true,workTable:false}:
+          action.view==='table'?{timeline:false,workTable:true,view:'time'}:
+            {timeline:false,workTable:false,view:action.view};
+        await display(ui.graph,{...extra,fitView:true});
+        break;
+      }
+      case 'focus':{
+        const nodes=action.kind==='node'?ui.graph.nodes:ui.graph.edges;
+        if(!nodes.some(item=>item.id===action.id))throw Error('定位对象已变化。');
+        let marker=Array.from($('stage').querySelectorAll('[data-node],[data-edge],[data-activity]')).find(item=>
+          item.dataset.node===action.id||item.dataset.edge===action.id||item.dataset.activity===action.id);
+        if(!marker||$('canvas').hidden){
+          await display(ui.graph,{view:'flow',timeline:false,workTable:false,fitView:true});
+          marker=Array.from($('stage').querySelectorAll('[data-node],[data-edge]')).find(item=>
+            item.dataset.node===action.id||item.dataset.edge===action.id);
+        }
+        select(action.kind,action.id);
+        marker?.scrollIntoView({block:'center',inline:'center'});
+        break;
+      }
+      case 'layout':
+        await display({...ui.graph,direction:action.direction},{forceLayout:true,view:'flow',timeline:false,workTable:false,fitView:true,change:true});
+        break;
+      case 'undo':await restoreHistory(ui.previous,ui.next);break;
+      case 'redo':await restoreHistory(ui.next,ui.previous);break;
+      case 'open':await openGraph();return;
+      case 'save':await save(false);break;
+      case 'save_as':await save(true);break;
+      case 'export_svg':if(await api.svg(ui.graph,ui.view==='flow'?ui.critical:ui.view))say('SVG 已导出。');break;
+      case 'export_events':if(await api.networkData(ui.graph))say('事件 JSON 已导出。');break;
+    }
+  }
+}
+
+$('draftPreview').onclick=()=>run(async()=>{
+  if(!conversation.draft)return;
+  const result=await api.agentPreview(ui.graph,conversation.draft.id);
+  const parsed=new DOMParser().parseFromString(result.svg,'image/svg+xml');
+  if(parsed.documentElement.localName!=='svg')throw Error('草稿预览加载失败。');
+  $('draftCanvas').replaceChildren(document.importNode(parsed.documentElement,true));
+  $('draftDialog').showModal();
+});
+$('previewClose').onclick=()=>$('draftDialog').close();

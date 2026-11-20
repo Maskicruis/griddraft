@@ -55,6 +55,7 @@ function select(kind,id){
   paintSelection();
   renderList();
   inspector();
+  document.dispatchEvent(new Event('griddraft:context-changed'));
 }
 function paintSelection(){
   $('stage').querySelectorAll('[data-node],[data-edge]').forEach(n=>{
@@ -114,6 +115,7 @@ async function display(graph,{fresh=false,change=false,forceLayout=false,fitView
   const count=ui.network?ui.network.events.length+' 个事件 · '+ui.network.arrows.filter(a=>a.kind==='activity').length+
     ' 道工作 · '+ui.network.arrows.filter(a=>a.kind==='dummy').length+' 条虚工作':ui.graph.nodes.length+' 个节点 · '+ui.graph.edges.length+' 条连线';
   say(analysisError || count+(ui.analysis?' · 逻辑工期 '+ui.analysis.duration+' 天':''),Boolean(analysisError));
+  document.dispatchEvent(new Event('griddraft:context-changed'));
 }
 async function edit(operations){await display(await api.edit(ui.graph,operations),{change:true});}
 function renderList(){
@@ -327,11 +329,12 @@ $('link').onclick=()=>{
 const guard=()=>!ui.dirty||confirm('当前网络图尚未保存，继续将放弃本次更改。');
 $('new').onclick=()=>run(async()=>{if(guard())await display(blank(),{fresh:true,critical:false,timeline:false,view:'flow',workTable:false});});
 $('demo').onclick=()=>run(async()=>{if(guard())await display(await api.demo(),{fresh:true,critical:false,timeline:false,view:'time',workTable:false});});
-$('open').onclick=()=>run(async()=>{
+async function openGraph(){
   if(!guard())return;
   const opened=await api.open();
   if(opened){await display(opened.graph,{fresh:true,critical:false,timeline:false,view:'time',workTable:false});ui.file=opened.file;changeDirty(false);}
-});
+}
+$('open').onclick=()=>run(openGraph);
 async function save(as){
   if(!ui.graph)return;
   const file=await api.save(ui.graph,as?null:ui.file);
@@ -348,14 +351,15 @@ $('cpm').onclick=()=>run(()=>display(ui.graph,{critical:!ui.critical,timeline:fa
 $('timelineView').onclick=()=>run(()=>display(ui.graph,{timeline:!ui.timeline,workTable:false,fitView:true}));
 $('fit').onclick=fit;
 for(const [id,gain] of [['plus',1.22],['minus',1/1.22]])$(id).onclick=()=>{ui.zoom=Math.min(4,Math.max(.05,ui.zoom*gain));frameZoom();};
-function history(from,to){
-  return run(async()=>{
+async function restoreHistory(from,to){
     if(!from.length)return;
     const previous=ui.graph;
     await display(from.at(-1));
     from.pop();to.push(previous);
     changeDirty(true);refresh();
-  });
+}
+function history(from,to){
+  return run(()=>restoreHistory(from,to));
 }
 $('undo').onclick=()=>history(ui.previous,ui.next);$('redo').onclick=()=>history(ui.next,ui.previous);
 document.addEventListener('keydown',e=>{

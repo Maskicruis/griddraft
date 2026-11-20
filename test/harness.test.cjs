@@ -38,9 +38,12 @@ test('official Harness loop uses a third-party gateway, runs GridDraft tools and
     {graph:fuyu,question:'请试算道路延至 10 天。'}, {signal:AbortSignal.timeout(20000),emit:event=>events.push(event)});
   assert.deepEqual(requests.map(r=>r.path),['/v1/chat/completions','/v1/chat/completions']);
   assert.ok(requests.every(r=>r.auth==='Bearer fixture-key'));
-  assert.deepEqual(requests[0].body.tools.map(tool=>tool.function.name).sort(),['inspect_schedule','list_tasks','simulate_durations']);
+  assert.ok(['inspect_schedule','list_tasks','edit_network','replace_network','list_links','interface_action'].every(
+    name=>requests[0].body.tools.some(tool=>tool.function.name===name)));
   assert.match(requests[1].body.messages.find(message=>message.role==='tool').content,/"after":35/);
-  assert.deepEqual(result.draft,{before:34,after:35,changes:[{id:'RD',label:'进场道路',before:9,days:10}]});
+  assert.equal(result.draft.before,34);
+  assert.equal(result.draft.after,35);
+  assert.match(result.draft.changes[0].description,/RD.*9 → 10/);
   assert.match(result.answer,/35 天/);
   assert.equal(events.find(e=>e.kind==='tool').name,'simulate_durations');
   assert.equal(fuyu.nodes.find(node=>node.id==='RD').duration,9);

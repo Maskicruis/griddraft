@@ -49,6 +49,7 @@ async function write(file,value){
 app.whenReady().then(async()=>{
   const modelStore=createModelStore(app.getPath('userData'),safeStorage);
   let runningAgent=null;
+  let agentSession=null,agentConfig='',resetAgent=true;
   let availableUpdate=null;
   let downloading=false;
   let downloadedPath=null;
@@ -62,23 +63,42 @@ app.whenReady().then(async()=>{
     await runHarness(await modelStore.candidate(form),{question:'请回复 OK。'},{signal:AbortSignal.timeout(20000)});
     return true;
   });
-  route('agentRun',async (graph,question,prior)=>{
+  route('agentRun',async (graph,question,context)=>{
     if(runningAgent)throw Error('已有试算请求在运行。');
     if(typeof question!=='string'||!question.trim()||question.length>2500)throw Error('请填写 1 至 2500 字的施工计划问题。');
-    const history=Array.isArray(prior)?prior.slice(-6).filter(turn=>['user','assistant'].includes(turn?.role)&&
-      typeof turn?.text==='string').map(turn=>({role:turn.role,text:turn.text.slice(0,2500)})):[];
     const control=new AbortController();
     runningAgent=control;
     try{
       const credentials=await modelStore.credentials();
-      const {runHarness}=await import('./src/harness.mjs');
-      return await runHarness(credentials,{graph,question,history},{
+      const config=JSON.stringify(credentials);
+      if(resetAgent||!agentSession||config!==agentConfig){
+        await agentSession?.dispose();
+        agentSession=null;
+        const {createHarnessSession}=await import('./src/harness.mjs');
+        agentSession=await createHarnessSession(credentials,{emit:event=>notify('agentEvent',event)});
+        agentConfig=config;resetAgent=false;
+      }
+      return await agentSession.run({graph,question,context},{
         signal:AbortSignal.any([control.signal,AbortSignal.timeout(90000)]),
-        emit:event=>notify('agentEvent',event)
       });
     }finally{runningAgent=null;}
   });
   route('agentStop',()=>runningAgent?.abort(new Error('已停止本次请求。')));
+  route('agentReset',()=>{resetAgent=true;runningAgent?.abort(new Error('已开始新对话。'));});
+  route('agentApply',(graph,id)=>{
+    if(runningAgent)throw Error('请等待本轮对话结束后应用。');
+    if(!agentSession||resetAgent)throw Error('请先生成网络图草稿。');
+    return agentSession.apply(graph,id);
+  });
+  route('agentPreview',async(graph,id)=>{
+    if(!agentSession||resetAgent)throw Error('请先生成网络图草稿。');
+    const candidate=agentSession.preview(graph,id);
+    try{return await draw(candidate,{networkView:'time'});}
+    catch(error){
+      if(!['CYCLE','MISSING_DURATION','EMPTY_NETWORK'].includes(error.code))throw error;
+      return draw(candidate,{});
+    }
+  });
   route('updateCheck',async()=>{
     if(downloading)throw Error('正在下载更新。');
     availableUpdate=null;
