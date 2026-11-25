@@ -59,6 +59,15 @@ async function connectDesktop(port){
   throw Error('Desktop debug endpoint did not start.');
 }
 
+async function desktopPage(browser){
+  for(let i=0;i<120;i++){
+    const page=browser.contexts()[0]?.pages().find(p=>p.url().startsWith('file:'));
+    if(page)return page;
+    await sleep(250);
+  }
+  throw Error('Desktop application page did not finish opening.');
+}
+
 async function run(){
   const [exe,output]=process.argv.slice(2);
   await fs.mkdir(output,{recursive:true});
@@ -74,8 +83,7 @@ async function run(){
   let browser;
   try{
     browser=await connectDesktop(port);
-    const context=browser.contexts()[0];
-    let page=context.pages().find(p=>p.url().startsWith('file:'))||await context.waitForEvent('page');
+    let page=await desktopPage(browser);
     const errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.locator('#projectDialog').waitFor({timeout:15000});
@@ -143,8 +151,7 @@ async function run(){
     await browser.close();
     subprocess=launch();
     browser=await connectDesktop(port);
-    const restarted=browser.contexts()[0];
-    page=restarted.pages().find(p=>p.url().startsWith('file:'))||await restarted.waitForEvent('page');
+    page=await desktopPage(browser);
     page.on('pageerror',error=>errors.push(error.message));
     await page.locator('#projectDialog').waitFor();
     await page.locator('#projectClose').click();
