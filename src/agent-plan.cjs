@@ -23,8 +23,8 @@ function difference(before,after){
       if(!previous){
         changes.push({kind:'added',id:item.id,description:'新增'+kind+' '+item.id+' '+(item.label||item.from+' → '+item.to)});
       }else if(JSON.stringify(previous)!==JSON.stringify(item)){
-        const fields=key==='nodes'?['label','kind','duration','position']:['from','to','label','lag'];
-        const names={label:'名称',kind:'类型',duration:'工期',position:'位置',from:'起点',to:'终点',lag:'时滞'};
+        const fields=key==='nodes'?['label','kind','duration','position','unit','estimated']:['from','to','label','lag'];
+        const names={label:'名称',kind:'类型',duration:'工期',position:'位置',from:'起点',to:'终点',lag:'时滞',unit:'单位工程',estimated:'工期占位'};
         const details=fields.filter(field=>JSON.stringify(previous[field])!==JSON.stringify(item[field]))
           .map(field=>names[field]+' '+JSON.stringify(previous[field]??null)+' → '+JSON.stringify(item[field]??null));
         if(details.length)changes.push({kind:'modified',id:item.id,description:kind+' '+item.id+' '+details.join('，')});
@@ -32,6 +32,7 @@ function difference(before,after){
     }
   }
   if(before.title!==after.title)changes.unshift({kind:'modified',id:'title',description:'图名称 '+before.title+' → '+after.title});
+  if(JSON.stringify(before.project)!==JSON.stringify(after.project))changes.push({kind:'modified',id:'project',description:'项目信息或工序模板已更新'});
   if(before.direction!==after.direction)changes.push({kind:'modified',id:'direction',description:'排版方向 '+before.direction+' → '+after.direction});
   return changes;
 }
@@ -52,7 +53,7 @@ class GraphWorkspace{
       this.base=next;this.graph=next;this.previous=[];this.revision=randomUUID();
     }
     if(changed||!this.proposal())this.actions=[];
-    this.context={view:context.view,selection:context.selection,canUndo:context.canUndo===true,canRedo:context.canRedo===true};
+    this.context={view:context.view,unit:context.unit,selection:context.selection,canUndo:context.canUndo===true,canRedo:context.canRedo===true};
     return changed;
   }
   checkpoint(){
@@ -110,6 +111,8 @@ class GraphWorkspace{
   }
   describe(){
     return {title:this.graph.title,count:this.graph.nodes.length,links:this.graph.edges.length,
+      ...(this.graph.project?{project:{name:this.graph.project.name,units:this.graph.project.units},
+        estimated:this.graph.nodes.filter(node=>node.estimated).length}:{}),
       ...assessment(this.graph),draftChanges:difference(this.base,this.graph).length};
   }
   proposal(){

@@ -233,7 +233,7 @@ $('agentForm').onsubmit=async event=>{
       selection.relatedArrows=arrows.slice(0,100);
       selection.relatedCount=arrows.length;
     }
-    const context={view:ui.timeline?'timeline':ui.workTable?'table':ui.view,selection,
+    const context={view:ui.timeline?'timeline':ui.workTable?'table':ui.view,unit:ui.unit,selection,
       canUndo:ui.previous.length>0,canRedo:ui.next.length>0};
     const result=await api.agentRun(plan,question,context);
     if(generation!==conversation.generation)return;
@@ -311,8 +311,8 @@ async function executeInterfaceActions(actions){
       case 'open':await openGraph();return;
       case 'save':await save(false);break;
       case 'save_as':await save(true);break;
-      case 'export_svg':if(await api.svg(ui.graph,ui.view==='flow'?ui.critical:ui.view))say('SVG 已导出。');break;
-      case 'export_events':if(await api.networkData(ui.graph))say('事件 JSON 已导出。');break;
+      case 'export_svg':if(await api.svg(ui.graph,ui.view==='flow'?ui.critical:ui.view,ui.unit))say('SVG 已导出。');break;
+      case 'export_events':if(await api.networkData(ui.graph,ui.unit))say('事件 JSON 已导出。');break;
     }
   }
 }

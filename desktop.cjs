@@ -11,6 +11,7 @@ const engine=require('./src/engine.cjs');
 const {createModelStore}=require('./src/settings.cjs');
 const {checkUpdates,downloadUpdate,releasePage}=require('./src/update.cjs');
 const demo=require('./examples/fuyu-demo.json');
+const project=require('./src/project.cjs');
 const page=path.join(__dirname,'ui','index.html');
 const canonical=p=>{const real=realpathSync.native(p);return process.platform==='win32'?real.toLowerCase():real;};
 const canonicalPage=canonical(page);
@@ -120,6 +121,31 @@ app.whenReady().then(async()=>{
   });
   route('updateReveal',()=>{if(downloadedPath)shell.showItemInFolder(downloadedPath);});
   route('releasePage',()=>shell.openExternal(releasePage));
+  route('projectTemplates',options=>project.templates(options));
+  route('projectParse',(text,format)=>project.parseProject(text,format));
+  route('projectGenerate',brief=>project.generateProject(brief));
+  route('projectImport',async()=>{
+    const result=await dialog.showOpenDialog(window,{title:'导入项目基本信息',properties:['openFile'],
+      filters:[{name:'项目文字或表格',extensions:['txt','md','csv','tsv','json']}]});
+    if(result.canceled)return null;
+    const file=result.filePaths[0];
+    if((await fs.stat(file)).size>2*1024*1024)throw Error('项目信息文件最大 2 MiB。');
+    const bytes=await fs.readFile(file);
+    const encoding=bytes[0]===255&&bytes[1]===254?'utf-16le':'utf-8';
+    let content;
+    try{content=new TextDecoder(encoding,{fatal:true}).decode(bytes);}
+    catch{throw Error('请将文件保存为 UTF-8 或 UTF-16LE 编码后导入。');}
+    const extension=path.extname(file).slice(1).toLowerCase();
+    return project.parseProject(content,['csv','tsv','json'].includes(extension)?extension:'auto');
+  });
+  route('projectSave',async(brief)=>{
+    const checked=project.normalizeProject(brief);
+    const result=await dialog.showSaveDialog(window,{title:'保存项目信息及工序模板',defaultPath:'project-brief.json',
+      filters:[{name:'项目信息 JSON',extensions:['json']}]});
+    if(result.canceled)return false;
+    await write(result.filePath,JSON.stringify(checked,null,2)+'\n');
+    return true;
+  });
   route('demo',()=>demo);
   route('draw',draw);
   route('edit',engine.edit);
@@ -141,15 +167,15 @@ app.whenReady().then(async()=>{
     await write(file,JSON.stringify(checked,null,2)+'\n');
     return file;
   });
-  route('svg',async(graph,view)=>{
+  route('svg',async(graph,view,unit)=>{
     const kind=['time','logic'].includes(view)?view:null;
     const result=await dialog.showSaveDialog(window,{defaultPath:kind?'activity-on-arrow.svg':'flow.svg',filters:[{name:'SVG',extensions:['svg']}]});
     if(result.canceled)return false;
-    await write(result.filePath,(await draw(graph,{critical:view===true,networkView:kind})).svg);
+    await write(result.filePath,(await draw(graph,{critical:view===true,networkView:kind,unit})).svg);
     return true;
   });
-  route('networkData',async(graph)=>{
-    const data=(await draw(graph,{networkView:'time'})).network;
+  route('networkData',async(graph,unit)=>{
+    const data=(await draw(graph,{networkView:'time',unit})).network;
     const result=await dialog.showSaveDialog(window,{defaultPath:'activity-on-arrow.json',filters:[{name:'JSON',extensions:['json']}]});
     if(result.canceled)return false;
     await write(result.filePath,JSON.stringify(data,null,2)+'\n');

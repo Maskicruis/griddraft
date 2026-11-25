@@ -78,6 +78,38 @@ async function run(){
     let page=context.pages().find(p=>p.url().startsWith('file:'))||await context.waitForEvent('page');
     const errors=[];
     page.on('pageerror',error=>errors.push(error.message));
+    await page.locator('#projectDialog').waitFor({timeout:15000});
+    await page.locator('#projectText').fill('项目名称：项目生成验收\n2台风机、一座升压站、集电线路30公里，桩基础。');
+    await page.locator('#projectRead').click();
+    await page.waitForFunction(()=>document.querySelector('#projectName').value==='项目生成验收');
+    assert.equal(await page.locator('#projectUnits input[aria-label="风机 count"]').inputValue(),'2');
+    await page.locator('#templatePreview').click();
+    await page.locator('#draftDialog').waitFor();
+    assert.equal(await page.locator('#draftCanvas [data-kind="activity"]').count(),12);
+    await page.locator('#previewClose').click();
+    await page.screenshot({path:path.join(output,'07-项目概况与模块模板.png')});
+    await page.locator('#projectGenerate').click();
+    await page.locator('#projectDialog').waitFor({state:'hidden'});
+    assert.equal(await page.locator('#unitScope option').count(),5);
+    assert.match(await page.locator('#projectNotice').textContent(),/占位值/);
+    await page.locator('#unitScope').selectOption('WT01');
+    await page.waitForFunction(()=>document.querySelector('#projectNotice').textContent.includes('单位工程内部'));
+    assert.equal(await page.locator('#stage [data-kind="activity"]').count(),12);
+    assert.equal(await page.locator('#objects .object').count(),12);
+    await page.screenshot({path:path.join(output,'08-单位工程模块网络.png')});
+    await page.locator('#add').click();
+    await page.locator('#nodeForm input[name=label]').fill('模块补充工序');
+    await page.locator('#nodeForm input[name=duration]').fill('2');
+    await page.getByRole('button',{name:'添加节点',exact:true}).click();
+    await page.locator('#nodeDialog').waitFor({state:'hidden'});
+    assert.equal(await page.locator('#objects .object').count(),13);
+    await page.locator('#undo').click();
+    await page.waitForFunction(()=>document.querySelectorAll('#objects .object').length===12);
+    await page.locator('#unitScope').selectOption('');
+    await page.waitForFunction(()=>document.querySelectorAll('#stage [data-kind="activity"]').length===36);
+    page.once('dialog',dialog=>dialog.accept());
+    await page.locator('#demo').click();
+    await page.waitForFunction(()=>document.querySelectorAll('#stage [data-kind="activity"]').length===7);
     try{await page.locator('#stage [data-event]').first().waitFor({timeout:15000});}
     catch(error){console.error(await page.locator('#status').textContent());throw error;}
     assert.equal(await page.locator('#stage [data-kind="activity"]').count(),7);
@@ -114,6 +146,9 @@ async function run(){
     const restarted=browser.contexts()[0];
     page=restarted.pages().find(p=>p.url().startsWith('file:'))||await restarted.waitForEvent('page');
     page.on('pageerror',error=>errors.push(error.message));
+    await page.locator('#projectDialog').waitFor();
+    await page.locator('#projectClose').click();
+    await page.locator('#demo').click();
     await page.locator('#stage [data-event]').first().waitFor();
     await page.locator('#agentOpen').click();
     await page.locator('#agentQuestion').fill('把道路工期延长至 10 天，请试算。');
@@ -205,7 +240,7 @@ async function run(){
     await page.waitForFunction(()=>document.querySelectorAll('#stage [data-edge]').length===11);
     assert.equal(await page.locator('#properties select[name=to]').inputValue(),'FINISH');
     assert.deepEqual(errors,[]);
-    const result={modelSettings:true,credentialsSurviveRestart:true,harnessDraft:true,fullNetworkEditing:true,
+    const result={projectIntake:true,moduleTemplates:true,unitScope:true,modelSettings:true,credentialsSurviveRestart:true,harnessDraft:true,fullNetworkEditing:true,
       multiTurnContext:true,draftPreview:true,pluginPlaceholder:true,timeScaledNetwork:true,structuralNetwork:true,
       workTableRecalculates:true, guiTimeline:true, drawAndConnect:true, positionUndo:true, criticalPathDays:34};
     await fs.writeFile(path.join(output,'gui-verification.json'),JSON.stringify(result,null,2),'utf8');

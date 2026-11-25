@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const ui={graph:null,file:null,previous:[],next:[],selected:null,list:'node',link:null,critical:false,
-  timeline:false,analysis:null,network:null,view:'time',workTable:false,zoom:1,busy:false,dirty:false,pointer:null};
+  timeline:false,analysis:null,network:null,view:'time',workTable:false,zoom:1,busy:false,dirty:false,pointer:null,unit:null};
 const names={task:'工序',decision:'判断',milestone:'里程碑'};
 const api=window.grid;
 const blank=()=>({version:1,title:'未命名网络图',direction:'RIGHT',nodes:[],edges:[]});
@@ -87,14 +87,15 @@ function refresh(){
   if(ui.workTable)drawWorkTable();
   renderList();inspector();paintSelection();
 }
-async function display(graph,{fresh=false,change=false,forceLayout=false,fitView=false,critical=ui.critical,timeline=ui.timeline,view=ui.view,workTable=ui.workTable}={}){
+async function display(graph,{fresh=false,change=false,forceLayout=false,fitView=false,critical=ui.critical,timeline=ui.timeline,view=ui.view,workTable=ui.workTable,unit=fresh?null:ui.unit}={}){
+  if(unit&&!graph.nodes.some(node=>node.unit===unit))unit=null;
   let result, analysisError;
-  try{result=await api.draw(graph,{critical:critical||timeline,forceLayout,networkView:!timeline&&view!=='flow'?view:null});}
+  try{result=await api.draw(graph,{critical:critical||timeline,forceLayout,networkView:!timeline&&view!=='flow'?view:null,unit});}
   catch(error){
     if(!['CYCLE','MISSING_DURATION','EMPTY_NETWORK'].includes(error.code))throw error;
     analysisError=error.message;
     critical=false;timeline=false;view='flow';workTable=false;
-    result=await api.draw(graph,{forceLayout});
+    result=await api.draw(graph,{forceLayout,unit});
   }
   if(fresh){ui.previous=[];ui.next=[];ui.selected=null;ui.file=null;ui.link=null;changeDirty(false);}
   if(change){
@@ -103,7 +104,7 @@ async function display(graph,{fresh=false,change=false,forceLayout=false,fitView
     ui.next=[];
     changeDirty(true);
   }
-  ui.graph=result.graph;ui.analysis=result.analysis;ui.critical=critical;ui.timeline=timeline;ui.view=view;
+  ui.graph=result.graph;ui.analysis=result.analysis;ui.critical=critical;ui.timeline=timeline;ui.view=view;ui.unit=unit;
   if(fresh)document.dispatchEvent(new Event('griddraft:plan-opened'));
   ui.network=result.network||null;
   ui.workTable=workTable&&Boolean(ui.network);
@@ -123,7 +124,9 @@ function renderList(){
   $('nodeList').setAttribute('aria-pressed',String(ui.list==='node'));
   $('edgeList').setAttribute('aria-pressed',String(ui.list==='edge'));
   const find=$('find').value.trim().toLowerCase();
-  const items=(ui.list==='node'?ui.graph.nodes:ui.graph.edges).filter(n=>[n.id,n.label,n.from,n.to].some(v=>v?.toLowerCase().includes(find)));
+  const visible=new Set(ui.graph.nodes.filter(node=>!ui.unit||node.unit===ui.unit).map(node=>node.id));
+  const items=(ui.list==='node'?ui.graph.nodes.filter(node=>visible.has(node.id)):
+    ui.graph.edges.filter(edge=>visible.has(edge.from)&&visible.has(edge.to))).filter(n=>[n.id,n.label,n.from,n.to].some(v=>v?.toLowerCase().includes(find)));
   const scroll=$('objects').scrollTop;
   $('objects').replaceChildren(...items.map(item=>{
     const kind=ui.list;
@@ -168,6 +171,9 @@ function inspector(){
     const kindInput=field(form,'kind','类型',selected.kind,'text',Object.entries(names));
     const duration=field(form,'duration','工期（天）',selected.duration,'number');
     duration.min=0;duration.max=100000;
+    if(selected.estimated)form.append(el('p','当前工期为模板占位值，请按本项目条件估算。','aside-note'));
+    if(selected.unit||selected.estimated!==undefined)field(form,'estimated','工期来源',String(selected.estimated??false),'text',
+      [['false','已录入本项目工期'],['true','模板占位，待估算']]);
     kindInput.onchange=()=>{
       if(kindInput.value==='milestone')duration.value='0';
     };
@@ -192,7 +198,8 @@ function inspector(){
     const values=Object.fromEntries(new FormData(form));
     if(kind==='node'){
       const duration=values.duration===''?undefined:Number(values.duration);
-      run(()=>edit([{op:'put-node',node:{...selected,label:values.label,kind:values.kind,duration}}]));
+      run(()=>edit([{op:'put-node',node:{...selected,label:values.label,kind:values.kind,duration,
+        ...(values.estimated===undefined?{}:{estimated:values.estimated==='true'})}}]));
     }else run(()=>edit([{op:'put-edge',edge:{...selected,label:values.label,from:values.from,to:values.to,lag:Number(values.lag)}}]));
   };
   area.replaceChildren(form);
@@ -261,7 +268,9 @@ function newNode(location){
     if(ui.graph.nodes.some(n=>n.id===data.id)){form.querySelector('.form-error').textContent='节点编号已存在。';return;}
     await run(async()=>{
       try{
-        await edit([{op:'put-node',node:{...data,position,duration:data.duration===''?undefined:Number(data.duration)}}]);
+        const unit=ui.unit?ui.graph.nodes.find(node=>node.unit===ui.unit):null;
+        await edit([{op:'put-node',node:{...data,position,duration:data.duration===''?undefined:Number(data.duration),
+          ...(unit?{unit:unit.unit,unitType:unit.unitType,estimated:false}:{})}}]);
         $('nodeDialog').close();select('node',data.id);
       }catch(error){form.querySelector('.form-error').textContent=error.message;}
     });
@@ -341,8 +350,8 @@ async function save(as){
   if(file){ui.file=file;changeDirty(false);say('图文件已保存。');}
 }
 $('save').onclick=()=>run(()=>save(false));$('saveAs').onclick=()=>run(()=>save(true));
-$('export').onclick=()=>run(async()=>{if(ui.graph&&await api.svg(ui.graph,ui.view==='flow'?ui.critical:ui.view))say('SVG 已导出。');});
-$('exportNetworkData').onclick=()=>run(async()=>{if(await api.networkData(ui.graph))say('双代号事件 JSON 已导出。');});
+$('export').onclick=()=>run(async()=>{if(ui.graph&&await api.svg(ui.graph,ui.view==='flow'?ui.critical:ui.view,ui.unit))say('SVG 已导出。');});
+$('exportNetworkData').onclick=()=>run(async()=>{if(await api.networkData(ui.graph,ui.unit))say('双代号事件 JSON 已导出。');});
 for(const [id,view] of [['networkTime','time'],['networkLogic','logic'],['flowView','flow']])
   $(id).onclick=()=>run(()=>display(ui.graph,{view,fitView:true,timeline:false,workTable:false}));
 $('workList').onclick=()=>run(()=>display(ui.graph,{view:ui.view==='flow'?'time':ui.view,timeline:false,workTable:!ui.workTable,fitView:true}));
@@ -368,4 +377,4 @@ document.addEventListener('keydown',e=>{
   if(k==='s'){e.preventDefault();$('save').click();}
   if(k==='z'&&!e.target.matches('input,textarea,select')){e.preventDefault();$(e.shiftKey?'redo':'undo').click();}
 });
-run(async()=>display(await api.demo(),{fresh:true,critical:false,timeline:false,view:'time'}));
+run(async()=>display(blank(),{fresh:true,view:'flow'}));

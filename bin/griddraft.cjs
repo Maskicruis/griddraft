@@ -6,6 +6,7 @@ const path=require('node:path');
 const {randomUUID}=require('node:crypto');
 const engine=require('../src/engine.cjs');
 const {buildNetwork,renderNetwork}=require('../src/aoa.cjs');
+const {parseProject,generateProject,unitGraph}=require('../src/project.cjs');
 const version=require('../package.json').version;
 const MAX=32*1024*1024;
 const help=`GridDraft ${version}
@@ -14,7 +15,8 @@ const help=`GridDraft ${version}
   griddraft render <input.json | -> [--critical] [--out file.svg]
   griddraft cpm <input.json | -> [--out file]
   griddraft edit <input.json | -> --patch operations.json [--out file]
-  griddraft network <input.json | -> [--format svg|json] [--view time|logic] [--out file]
+  griddraft network <input.json | -> [--format svg|json] [--view time|logic] [--unit WT01] [--out file]
+  griddraft project <description.txt|table.csv|brief.json|-> [--format graph|brief|svg] [--view time|logic] [--out file]
   griddraft batch <directory> --out <directory> [--format svg|layout|cpm|network] [--view time|logic] [--critical]
 
 JSON and SVG data go to stdout when --out is omitted. Errors are JSON on stderr.
@@ -38,7 +40,7 @@ function parse(args,allowed){
 }
 function json(value){return JSON.stringify(value,null,2)+'\n';}
 function status(error){return {code:error.code||'FAILED',message:error.message};}
-async function read(input){
+async function read(input,format='json'){
   let raw;
   if(input==='-'){
     const chunks=[];let bytes=0;
@@ -54,6 +56,7 @@ async function read(input){
     if(st.size>MAX)throw new engine.GraphError('INPUT_TOO_LARGE','输入超过 32 MiB。');
     raw=await fs.readFile(input,'utf8');
   }
+  if(format==='text')return raw;
   try{return JSON.parse(raw.replace(/^\uFEFF/,''));}
   catch(e){throw new engine.GraphError('INVALID_JSON',e.message);}
 }
@@ -83,7 +86,8 @@ async function batch(input,flags){
       const key=process.platform==='win32'?name.toLowerCase():name;
       if(outputs.has(key))throw new engine.GraphError('OUTPUT_COLLISION','批次内输出文件名冲突。');
       outputs.add(key);
-      const graph=await read(path.join(a,file));
+      const input=await read(path.join(a,file));
+      const graph=Array.isArray(input.units)&&!input.nodes?generateProject(input).graph:input;
       const content=format==='network'?renderNetwork(buildNetwork(graph),{view:flags['--view']}):
         format==='svg'?(await engine.render(graph,{critical:flags['--critical']})).svg:
           json(format==='layout'?await engine.layout(graph):engine.cpm(graph));
@@ -100,10 +104,20 @@ async function main(args){
   if(!command||command==='--help'||command==='help'){process.stdout.write(help);return 0;}
   if(command==='--version'){process.stdout.write(version+'\n');return 0;}
   const choices={validate:[],layout:['--direction','--out'],render:['--critical','--out'],
-    cpm:['--out'],edit:['--patch','--out'],network:['--format','--view','--out'],batch:['--out','--format','--critical','--view']};
+    cpm:['--out'],edit:['--patch','--out'],network:['--format','--view','--unit','--out'],project:['--format','--view','--out'],batch:['--out','--format','--critical','--view']};
   if(!Object.hasOwn(choices,command))throw usage('未知命令 '+command);
   const {input,flags}=parse(args,choices[command]);
   if(command==='batch')return batch(input,flags);
+  if(command==='project'){
+    const format=flags['--format']||'graph';
+    const view=flags['--view']||'logic';
+    if(!['graph','brief','svg'].includes(format)||!['time','logic'].includes(view))throw usage('项目输出格式须为 graph、brief 或 svg。');
+    const brief=parseProject(await read(input,'text'));
+    const generated=generateProject(brief);
+    await write(flags['--out'],format==='svg'?renderNetwork(buildNetwork(generated.graph),{view})+'\n':
+      json(format==='brief'?generated.graph.project:generated.graph));
+    return 0;
+  }
   const graph=await read(input);
   let result;
   if(command==='validate'){
@@ -116,7 +130,7 @@ async function main(args){
     const format=flags['--format']||'svg';
     if(!['svg','json'].includes(format)||flags['--view']&&!['time','logic'].includes(flags['--view']))
       throw usage('网络图格式须为 svg 或 json，视图须为 time 或 logic。');
-    const network=buildNetwork(graph);
+    const network=buildNetwork(flags['--unit']?unitGraph(graph,flags['--unit']):graph);
     result=format==='json'?network:renderNetwork(network,{view:flags['--view']});
   }
   else {

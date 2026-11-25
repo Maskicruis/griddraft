@@ -22,7 +22,11 @@ test('a persistent Harness conversation edits structure, follows up on its draft
     {tool:'edit_network',args:{operations:[
       {op:'remove-node',id:'QC'},{op:'put-edge',edge:{id:'e2',from:'RD',to:'F08-P'}}
     ]}},
-    {text:'已删除该工序并恢复原紧前关系。'}
+    {text:'已删除该工序并恢复原紧前关系。'},
+    {tool:'generate_project',args:{brief:{version:1,name:'描述生成项目',units:[
+      {type:'wind',count:2},{type:'substation',count:1},{type:'collector',count:1,lengthKm:100,aggregate:true}
+    ]}}},
+    {text:'已按工程模块生成初稿，工期为占位值。'}
   ];
   const requests=[];
   const server=createServer(async(req,res)=>{
@@ -61,6 +65,12 @@ test('a persistent Harness conversation edits structure, follows up on its draft
   assert.equal(third.draft.after,34);
   assert.ok(third.draft.changes.some(change=>change.kind==='removed'&&change.id==='qc-p'));
   assert.deepEqual(third.actions,[]);
-  assert.ok(!session.apply(current,third.draft.id).nodes.some(node=>node.id==='QC'));
+  const restored=session.apply(current,third.draft.id);
+  assert.ok(!restored.nodes.some(node=>node.id==='QC'));
+  const fourth=await session.run({graph:restored,question:'根据项目概况生成一个2台风机、1座升压站、100公里线路的新项目。'},options);
+  const generated=session.preview(restored,fourth.draft.id);
+  assert.equal(generated.project.units.find(unit=>unit.type==='wind').count,2);
+  assert.ok(generated.nodes.some(node=>node.id==='WT02.grid'));
+  assert.ok(generated.edges.some(edge=>edge.from==='SS01.ready'&&edge.to==='PROJECT.ENERGIZE'));
   assert.equal(script.length,0);
 });

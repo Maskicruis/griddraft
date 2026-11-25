@@ -8,7 +8,8 @@
     "title": {"type": "string", "minLength": 1, "maxLength": 120},
     "direction": {"enum": ["RIGHT", "DOWN", "LEFT", "UP"], "default": "RIGHT"},
     "nodes": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/node"}},
-    "edges": {"type": "array", "maxItems": 5000, "items": {"$ref": "#/$defs/edge"}}
+    "edges": {"type": "array", "maxItems": 5000, "items": {"$ref": "#/$defs/edge"}},
+    "project": {"type": "object", "required": ["version", "name", "units"], "description": "Validated project brief and reusable module templates; see examples/project-brief.json."}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$"},
@@ -24,7 +25,10 @@
         "label": {"type": "string", "minLength": 1, "maxLength": 96},
         "kind": {"enum": ["task", "decision", "milestone"], "default": "task"},
         "duration": {"$ref": "#/$defs/days"},
-        "position": {"$ref": "#/$defs/point"}
+        "position": {"$ref": "#/$defs/point"},
+        "unit": {"$ref": "#/$defs/id"},
+        "unitType": {"enum": ["wind", "substation", "collector", "road"]},
+        "estimated": {"type": "boolean", "description": "true means placeholder duration awaiting estimation"}
       },
       "if": {"properties": {"kind": {"const": "milestone"}}, "required": ["kind"]},
       "then": {"properties": {"duration": {"const": 0}}}

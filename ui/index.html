@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'">
 <title>GridDraft 网络图工作台</title>
-<link rel="stylesheet" href="style.css"><script src="app.js" defer></script><script src="services.js" defer></script>
+<link rel="stylesheet" href="style.css"><script src="app.js" defer></script><script src="services.js" defer></script><script src="project.js" defer></script>
 </head>
 <body>
 <header class="masthead">
@@ -18,10 +18,11 @@
     <input id="find" type="search" placeholder="搜索编号或名称" aria-label="搜索节点">
     <div class="tabs"><button id="nodeList" aria-pressed="true">节点</button><button id="edgeList" aria-pressed="false">连线</button></div>
     <div id="objects"></div>
-    <footer><button id="demo">打开扶余示例</button></footer>
+    <footer><button id="projectOpen" class="primary">项目信息 → 生成网络</button><button id="demo">打开扶余示例</button></footer>
   </aside>
   <section class="editor" aria-label="网络画布">
     <div class="toolbar actions">
+      <select id="unitScope" aria-label="单位工程视图" hidden></select>
       <div class="view-switch actions" aria-label="图纸类型">
         <button id="networkTime" aria-pressed="true">双代号时标</button>
         <button id="networkLogic" aria-pressed="false">双代号结构</button>
@@ -36,6 +37,7 @@
       <button id="exportNetworkData">导出事件 JSON</button>
       <span class="spacer"></span><button id="minus" aria-label="缩小">−</button><button id="fit">适合窗口</button><button id="plus" aria-label="放大">＋</button>
     </div>
+    <div id="projectNotice" class="project-notice" hidden></div>
     <div id="canvas" tabindex="0" aria-label="可编辑的网络图"><div id="stage"></div></div>
     <div id="timeline" aria-label="计划时间轴" hidden></div>
     <div id="workTable" aria-label="双代号工作表" hidden></div>
@@ -113,6 +115,32 @@
 <dialog id="draftDialog" class="preview-dialog" aria-label="网络图草稿预览">
   <header class="service-head"><h2>网络图草稿预览</h2><button id="previewClose">关闭</button></header>
   <div id="draftCanvas"></div>
+</dialog>
+<dialog id="projectDialog" class="project-dialog" aria-labelledby="projectTitle">
+  <header class="service-head"><div><h2 id="projectTitle">从项目信息建立网络图</h2><small>输入概况 · 确认工程范围 · 调整模块 · 生成初稿</small></div><button id="projectClose">关闭</button></header>
+  <div class="project-body">
+    <section class="project-input">
+      <h3>项目基本信息</h3>
+      <textarea id="projectText" aria-label="项目描述" placeholder="项目名称：扶余一号&#10;27台风机、1座升压站、集电线路300公里，桩基础。"></textarea>
+      <div class="actions"><button id="projectRead">识别文字 / 粘贴表格</button><button id="projectImport">导入文件</button></div>
+      <p class="aside-note">支持 TXT、Markdown、CSV、TSV、项目 JSON；Excel 表格可直接复制粘贴或另存为 CSV。</p>
+      <label>项目名称<input id="projectName" value="新建风电项目" maxlength="100"></label>
+      <div class="project-options">
+        <label>风机基础<select id="projectFoundation"><option value="unknown">待确认（浅基础骨架）</option><option value="spread">浅基础</option><option value="pile">桩基础</option></select></label>
+        <label>集电线路<select id="projectLine"><option value="unknown">待确认（电缆骨架）</option><option value="cable">电缆线路</option><option value="overhead">架空线路</option></select></label>
+      </div>
+      <div class="project-units"><table><thead><tr><th>工程</th><th>数量/模块数</th><th>编号前缀</th><th>总长 km</th></tr></thead><tbody id="projectUnits"></tbody></table></div>
+    </section>
+    <section class="project-template">
+      <h3>可复用的模块工序模板</h3>
+      <select id="projectType" aria-label="选择工程模块"><option value="wind">风机工程</option><option value="substation">升压站工程</option><option value="collector">集电线路</option><option value="road">场内道路</option></select>
+      <p class="aside-note">修改名称、工期和紧前工序后可保存为项目模板，再用于其他项目。默认1天为占位工期；录入的工期作为本项目估算值。</p>
+      <div class="template-table"><table><thead><tr><th>工序代码</th><th>工序名称</th><th>天</th><th>紧前代码</th></tr></thead><tbody id="templateSteps"></tbody></table></div>
+      <div class="actions"><button id="templatePreview">预览本模块网络</button><button id="projectSave">保存信息与模板</button></div>
+      <p class="aside-note">初稿按单位工程并行、道路共同前置、全场受电汇合生成。机位分组、分段移交和分批并网关系可在生成后通过界面或智能体细化。</p>
+    </section>
+  </div>
+  <footer class="project-footer"><span id="projectStatus" role="status"></span><button id="projectGenerate" class="primary">生成全项目网络初稿</button></footer>
 </dialog>
 </body>
 </html>

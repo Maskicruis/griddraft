@@ -1,6 +1,7 @@
 'use strict';
 
 const ELK = require('elkjs/lib/elk.bundled.js');
+const {normalizeProject}=require('./project.cjs');
 const elk = new ELK();
 const size = { width:172, height:58 };
 const kinds = new Set(['task','milestone','decision']);
@@ -31,8 +32,11 @@ function normalize(input) {
     requireValue(kinds.has(n.kind ?? 'task'),at+' 类型无效。');
     if (n.duration !== undefined) requireValue(integer(n.duration) && (n.kind!=='milestone' || n.duration===0),at+' 工期无效，里程碑工期须为 0。');
     if (n.position !== undefined) requireValue(point(n.position),at+' 坐标无效。');
+    if(n.unit!==undefined)requireValue(idOf(n.unit)&&['wind','substation','collector','road'].includes(n.unitType),at+' 单位工程信息无效。');
+    if(n.estimated!==undefined)requireValue(typeof n.estimated==='boolean',at+' 工期来源无效。');
     return { id:n.id,label:n.label.trim(),kind:n.kind ?? 'task',...(n.duration === undefined?{}:{duration:n.duration}),
-      ...(n.position?{position:{x:n.position.x,y:n.position.y}}:{}) };
+      ...(n.position?{position:{x:n.position.x,y:n.position.y}}:{}),
+      ...(n.unit?{unit:n.unit,unitType:n.unitType}:{}),...(n.estimated===undefined?{}:{estimated:n.estimated}) };
   });
   const ids=new Set(nodes.map(n=>n.id));
   const nodeById=new Map(nodes.map(n=>[n.id,n]));
@@ -51,7 +55,8 @@ function normalize(input) {
       ...(e.points?{points:e.points.map(p=>({x:p.x,y:p.y}))}:{})};
   });
   requireValue(new Set(edges.map(e=>e.id)).size === edges.length,'存在重复连线编号。');
-  return {version:1,title:input.title.trim(),direction:input.direction ?? 'RIGHT',nodes,edges};
+  return {version:1,title:input.title.trim(),direction:input.direction ?? 'RIGHT',nodes,edges,
+    ...(input.project?{project:normalizeProject(input.project)}:{})};
 }
 
 function cpm(input) {
@@ -129,7 +134,7 @@ function edit(input, operations) {
         if(!object(n)||!idOf(n.id))throw new GraphError('INVALID_PATCH','put-node 需要 node.id。');
         const before=nodes.get(n.id);
         if(JSON.stringify(before?.position)!==JSON.stringify(n.position))invalidate.add(n.id);
-        nodes.set(n.id,n); break;
+        nodes.set(n.id,{...n,...(before&&n.duration!==before.duration?{estimated:false}:{})}); break;
       }
       case 'put-edge':
         if(!object(op.edge)||!idOf(op.edge.id))throw new GraphError('INVALID_PATCH','put-edge 需要 edge.id。');

@@ -129,6 +129,7 @@ function buildNetwork(input) {
       throw new GraphError('NETWORK_MISMATCH','里程碑 '+id+' 的时间参数在转换后不一致。');
   }
   return {version:1,kind:'activity-on-arrow',title:graph.title,duration:total,start:number.get(0),finish:number.get(finish),
+    ...(graph.nodes.some(node=>node.estimated)?{estimatedCount:graph.nodes.filter(node=>node.estimated).length}:{}),
     events:numbered.map(id=>({id:number.get(id),early:es.get(id),late:ls.get(id),layer:layer.get(id),milestones:markers.get(id)||[]})),
     arrows:outputArrows};
 }
@@ -185,7 +186,7 @@ function renderNetwork(network,{view='time',pixelsPerDay=32}={}) {
     `<title>${escape(network.title)} — ${view==='time'?'双代号时标网络图':'双代号网络图'}</title>`,
     `<rect width="${width}" height="${height}" fill="#fbfdff"/>`,
     `<text x="22" y="35" font-size="22" font-weight="700" fill="#15314a">${escape(network.title)}</text>`,
-    `<text x="22" y="63" font-size="13" fill="#516a82">${view==='time'?'双代号时标网络图 · 最早时间标尺':'双代号网络图 · 逻辑结构'} · 计算工期 ${network.duration} 天</text>`];
+    `<text x="22" y="63" font-size="13" fill="#516a82">${view==='time'?'双代号时标网络图 · 最早时间标尺':'双代号网络图 · 逻辑结构'} · ${network.estimatedCount?'占位工期计算':'计算工期'} ${network.duration} 天${network.estimatedCount?' · '+network.estimatedCount+' 道工期待估算':''}</text>`];
   const tick=Math.max(1,Math.ceil(Math.max(58/unit,axis/45)));
   if(view==='time'){
     const ticks=Array.from({length:Math.floor(axis/tick)+1},(_,i)=>i*tick);

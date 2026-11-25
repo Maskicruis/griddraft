@@ -6,7 +6,18 @@ GridDraft 是一款独立的施工进度网络图工具。桌面端和 CLI 从�
 
 ## 桌面版
 
-下载并打开 Windows 桌面版 EXE，默认展示扶余工序示例的**双代号时标网络图**。圆圈为编号事件，箭线为有工期的工作，红色为关键线路，虚线为虚工作，橙色为时滞。横轴按 D0 起算，工作实线的水平投影表示持续时间，波形表示从工作完成到箭头所指事件发生的间隔。点击圆圈可查询事件最早、最迟时间，点击工作名称可编辑。图纸可用滚轮缩放，拖动空白处平移。
+下载并打开 Windows 桌面版 EXE，首先从项目基本信息建立网络。已有图文件可关闭项目信息窗口后打开；左侧保留扶余演示入口。双代号图中的圆圈为编号事件，箭线为有工期的工作，红色为关键线路，虚线为虚工作，橙色为时滞。横轴按 D0 起算，工作实线的水平投影表示持续时间，波形表示从工作完成到箭头所指事件发生的间隔。点击圆圈可查询事件最早、最迟时间，点击工作名称可编辑。图纸可用滚轮缩放，拖动空白处平移。
+
+## 从项目概况开始
+
+1. 在「项目信息 → 生成网络」中粘贴文字描述、CSV 或从 Excel 复制的表格，也可导入 TXT、Markdown、CSV、TSV、项目 JSON。表格可用「类型、数量、长度km」列，也可使用两列参数表或一行宽表。简单 JSON 支持 `turbineCount`、`substationCount`、`collectorLengthKm` 等字段。示例输入见 `examples/project-brief.json` 与 `examples/project-info.csv`。
+2. 检查识别后的工程数量、编号前缀、线路长度、基础型式及集电线路型式。数量有冲突或使用模糊范围时需要补充确切值。只有线路长度而没有回路数量时，先按一个总体模块建立，后续调整划分。
+3. 在同一窗口分别调整风机、升压站、集电线路和道路模块的名称、工期、紧前工序，并预览该模块的双代号网络。保存「信息与模板」后可在下一项目中导入复用。
+4. 生成后默认显示全项目双代号结构图，通过「单位工程视图」选择 WT01、SS01 等逐个查看与细化。单位工程视图仅包含内部关系，跨模块关系在全项目中查看。保存图文件会同时保留项目基本信息和模板来源。
+
+内置模块是可编辑的规划骨架。默认工期统一采用 1 天占位，图纸与导出的 SVG 会标明待估算数量。初稿先按单位工程并行、道路共同前置、全场受电条件汇合生成，未输入的资源、养护与验收时长、线路分段及分批并网安排需要按设计和施工组织补充。线路总长保留为项目资料，未据此推算工期。再次生成会建立新的初稿，细化结果可先另存为图文件。
+
+模块按场地准备、基础、安装、电气与调试等常见工作组织。工程实际工序和条件需要逐项核实。[美国能源部风电建设工作介绍](https://www.energy.gov/cmei/systems/windexchange/large-community-wind-handbook)
 
 - 「双代号结构」按逻辑层级布局，便于检查依赖、汇合和虚工作。箭长随布局变化。
 - 「工作表」按双代号列出工期、最早开始（ES）、最早完成（EF）、总时差（TF）和自由时差（FF）。点击工作名称可改名称、工期等字段。工作表中的自由时差按源工序及后续约束计算。
@@ -32,6 +43,9 @@ Windows CLI ZIP 解压后运行 griddraft.cmd，无需另装 Node.js。跨平台
 
 ```powershell
 .\griddraft.cmd validate .\examples\fuyu-demo.json
+.\griddraft.cmd project .\examples\project-brief.json --out initial-network.json
+.\griddraft.cmd project .\examples\project-info.csv --format svg --out initial-network.svg
+.\griddraft.cmd network initial-network.json --unit WT01 --view logic --out wind-unit.svg
 .\griddraft.cmd network .\examples\fuyu-demo.json --view time --out network-time.svg
 .\griddraft.cmd network .\examples\fuyu-demo.json --view logic --out network-logic.svg
 .\griddraft.cmd network .\examples\fuyu-demo.json --format json --out events.json

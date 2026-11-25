@@ -13,10 +13,12 @@ import Tools, {defineTool} from '@deepseek-ai/dsh-tools';
 import * as Executor from '@deepseek-ai/dsh-tool-executor-native';
 import engine from './engine.cjs';
 import planTools from './agent-plan.cjs';
+import projects from './project.cjs';
 
 const agentPrompt = [
   '你是 GridDraft 网络图编辑智能体。结合当前图、当前选中项、视图和完整会话上下文操作网络图。',
   '可以从空图创建完整网络，也可以新增、删除、重命名、移动工序、连接或断开工作、修改时滞及工期、重建图结构。',
+  '只有项目基本信息时，优先调用 generate_project 按模块模板生成整图，再使用 edit_network 细化。模板工期是占位值，不能当成已批准工期。',
   '使用 edit_network 或 replace_network 提交修改。修改会累积在一份草稿中，后续查询和连续修改都针对最新草稿。用户应用前正式图保持可审阅状态。',
   'inspect_schedule 返回当前草稿摘要。list_tasks 和 list_links 可以分页查询整张图，不能把首屏数据当成全部图。',
   '可以用 interface_action 切换视图、定位节点或连线、排版、保存或导出。存在草稿时，界面操作在应用草稿后执行。',
@@ -53,16 +55,16 @@ function registerPlanTools(ctx, workspace, emit) {
     return {...result,critical:result.critical.slice(0,100),criticalCount:result.critical.length,context:workspace.context};
   });
   tool('list_tasks','分页查找当前工序、工期及紧前关系。查询可匹配工序编号或名称。', {
-    query:{type:'string'}, offset:{type:'integer'},limit:{type:'integer'}
-  }, ({query='',offset=0,limit=30}) => {
+    query:{type:'string'},unit:{type:'string'}, offset:{type:'integer'},limit:{type:'integer'}
+  }, ({query='',unit,offset=0,limit=30}) => {
     const term = query.slice(0,120).toLowerCase();
     const graph=workspace.graph;
-    const matched = graph.nodes.filter(task => task.id.toLowerCase().includes(term) || task.label.toLowerCase().includes(term));
+    const matched = graph.nodes.filter(task => (!unit||task.unit===unit)&&(task.id.toLowerCase().includes(term) || task.label.toLowerCase().includes(term)));
     const start = Math.max(0,offset);
     const page=Math.max(1,Math.min(100,limit));
     return {total:matched.length, next:start+page < matched.length ? start+page : null,
-      tasks:matched.slice(start,start+page).map(({id,label,duration,kind,position}) => ({
-        id,label,duration:duration??null,kind,position:position??null,
+      tasks:matched.slice(start,start+page).map(({id,label,duration,kind,position,unit,estimated}) => ({
+        id,label,duration:duration??null,kind,position:position??null,unit:unit??null,estimated:estimated??false,
         predecessors:graph.edges.filter(edge => edge.to===id).slice(0,20).map(edge => ({id:edge.from,lag:edge.lag})),
         predecessorCount:graph.edges.filter(edge => edge.to===id).length,
         successors:graph.edges.filter(edge=>edge.from===id).slice(0,20).map(edge=>({id:edge.to,lag:edge.lag})),
@@ -89,6 +91,13 @@ function registerPlanTools(ctx, workspace, emit) {
   tool('replace_network','创建新网络或整体重建当前草稿。graph 格式为 {version:1,title,direction:"RIGHT|DOWN|LEFT|UP",nodes:[{id,label,kind:"task|milestone|decision",duration}],edges:[{id,from,to,lag:0}]}。完整图最多 1000 节点、5000 线。',{
     graph:{type:'json',required:true}
   },({graph})=>workspace.replace(graph));
+  tool('generate_project','根据项目基本信息展开可编辑的模块网络。brief 格式为 {version:1,name,foundation:"unknown|spread|pile",lineMethod:"unknown|cable|overhead",units:[{type:"wind|substation|collector|road",count,prefix?,lengthKm?,aggregate?}]}。count 是单位工程或规划模块数；只有线路长度、回路数未知时使用 count:1,aggregate:true，并向用户说明。工期为占位值，生成后可继续查询并细化草稿。',{
+    brief:{type:'json',required:true}
+  },({brief})=>{
+    const generated=projects.generateProject(brief);
+    return {...workspace.replace(generated.graph),assumptions:generated.assumptions,
+      units:generated.units.map(({id,type})=>({id,type})),estimated:generated.estimated};
+  });
   tool('undo_draft','撤销当前草稿最近一组修改，保留其他尚未应用的修改。',{},()=>workspace.undo());
   tool('discard_draft','放弃当前所有草稿变更，恢复到已打开的正式图。',{},()=>workspace.discard());
   tool('interface_action','请求软件界面操作。action 可为 view、focus、layout、undo、redo、open、save、save_as、export_svg、export_events。open 打开文件选择器，save_as 另存为。view 参数为 time（双代号时标）、logic（双代号结构）、flow（流程编辑）、timeline 或 table。focus 通过 id 定位工序或连线，kind 为 node 或 edge。layout 的 direction 为 RIGHT/DOWN/LEFT/UP。',{

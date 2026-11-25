@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "project-brief",
+  "name": "扶余一号项目信息示例",
+  "description": "27台风机、1座升压站、300公里集电线路。此处仅为信息输入演示，回路划分待确认。",
+  "foundation": "pile",
+  "lineMethod": "unknown",
+  "units": [
+    {"type": "wind", "count": 27, "prefix": "WT"},
+    {"type": "substation", "count": 1, "prefix": "SS"},
+    {"type": "collector", "count": 1, "prefix": "CL", "lengthKm": 300, "aggregate": true}
+  ]
+}
