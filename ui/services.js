@@ -170,7 +170,7 @@ function resetConversation() {
 
 function updateAgentContext(){
   if(!ui.graph)return;
-  const names={time:'双代号时标',logic:'双代号结构',flow:'流程编辑'};
+  const names={time:'双代号时标',logic:'双代号结构',flow:'流程编辑',summary:'重复模块总览'};
   const selected=dataForSelection();
   $('agentContext').textContent=ui.graph.title+' · '+(ui.timeline?'时间轴':ui.workTable?'工作表':names[ui.view])+
     (selected?' · 选中 '+(selected.label||selected.id):'');
@@ -285,7 +285,7 @@ async function executeInterfaceActions(actions){
       case 'view':{
         const extra=action.view==='timeline'?{timeline:true,workTable:false}:
           action.view==='table'?{timeline:false,workTable:true,view:'time'}:
-            {timeline:false,workTable:false,view:action.view};
+            {timeline:false,workTable:false,view:action.view,...(action.view==='summary'?{unit:null}:{})};
         await display(ui.graph,{...extra,fitView:true});
         break;
       }
@@ -295,7 +295,7 @@ async function executeInterfaceActions(actions){
         let marker=Array.from($('stage').querySelectorAll('[data-node],[data-edge],[data-activity]')).find(item=>
           item.dataset.node===action.id||item.dataset.edge===action.id||item.dataset.activity===action.id);
         if(!marker||$('canvas').hidden){
-          await display(ui.graph,{view:'flow',timeline:false,workTable:false,fitView:true});
+          await display(ui.graph,{view:'flow',unit:null,timeline:false,workTable:false,fitView:true});
           marker=Array.from($('stage').querySelectorAll('[data-node],[data-edge]')).find(item=>
             item.dataset.node===action.id||item.dataset.edge===action.id);
         }

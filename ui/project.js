@@ -139,7 +139,7 @@ $('projectGenerate').onclick=()=>projectAction(async()=>{
   const brief=readProject();
   const result=await api.projectGenerate(brief);
   if(!guard())return;
-  await display(result.graph,{fresh:true,view:'logic',critical:false,timeline:false,workTable:false});
+  await display(result.graph,{fresh:true,view:'auto',critical:false,timeline:false,workTable:false});
   changeDirty(true);
   statusLine('projectStatus','已生成 '+result.units.length+' 个单位工程模块。');
   $('projectDialog').close();
@@ -154,20 +154,22 @@ function refreshProjectNotice(){
   scope.value=ui.unit??'';
   const estimated=ui.graph.nodes.filter(node=>node.estimated&&(!ui.unit||node.unit===ui.unit)).length;
   const notice=$('projectNotice');
-  notice.hidden=!ui.graph.project&&!ui.unit;
+  notice.hidden=!ui.graph.project&&!ui.unit&&!ui.summary;
   if(!notice.hidden){
     const project=ui.graph.project;
     const warnings=[];
     if(project?.foundation==='unknown')warnings.push('基础型式待确认');
     if(project?.lineMethod==='unknown')warnings.push('线路型式待确认');
     if(project?.units.some(unit=>unit.aggregate))warnings.push('总体模块划分待确认');
-    notice.textContent=(ui.unit?'单位工程内部网络，跨模块关系见全项目。':'模板初稿，按并行施工及全场受电汇合生成。')+
+    notice.textContent=(ui.summary?'重复模块已汇总；外部控制点分段保留，点击模块进入详细网络。':ui.unit?'单位工程内部网络，跨模块关系见全项目。':'模板初稿，按并行施工及全场受电汇合生成。')+
       ' '+estimated+' 道工期为占位值。'+warnings.join('，');
+    if(ui.unit&&ui.drill?.units.includes(ui.unit))notice.textContent+=' 当前重复组共 '+ui.drill.units.length+' 个实例，可通过单位工程下拉框切换。';
   }
 }
 $('unitScope').onchange=()=>run(async()=>{
   ui.selected=null;
-  await display(ui.graph,{unit:$('unitScope').value||null,fitView:true});
+  const unit=$('unitScope').value||null;
+  await display(ui.graph,{unit,view:unit&&ui.view==='summary'?'logic':ui.view,fitView:true});
   if(ui.unit){ui.zoom=1;frameZoom();}
 });
 document.addEventListener('griddraft:context-changed',refreshProjectNotice);

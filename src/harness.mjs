@@ -14,6 +14,7 @@ import * as Executor from '@deepseek-ai/dsh-tool-executor-native';
 import engine from './engine.cjs';
 import planTools from './agent-plan.cjs';
 import projects from './project.cjs';
+import summaries from './summary.cjs';
 
 const agentPrompt = [
   '你是 GridDraft 网络图编辑智能体。结合当前图、当前选中项、视图和完整会话上下文操作网络图。',
@@ -21,6 +22,7 @@ const agentPrompt = [
   '只有项目基本信息时，优先调用 generate_project 按模块模板生成整图，再使用 edit_network 细化。模板工期是占位值，不能当成已批准工期。',
   '使用 edit_network 或 replace_network 提交修改。修改会累积在一份草稿中，后续查询和连续修改都针对最新草稿。用户应用前正式图保持可审阅状态。',
   'inspect_schedule 返回当前草稿摘要。list_tasks 和 list_links 可以分页查询整张图，不能把首屏数据当成全部图。',
+  '重复单位工程可用 inspect_modules 查看自动汇总结果，并用 interface_action view:summary 打开总览。汇总仅改变显示，仍编辑完整源工序。',
   '可以用 interface_action 切换视图、定位节点或连线、排版、保存或导出。存在草稿时，界面操作在应用草稿后执行。',
   '用户引用“它、刚才那个、这条线”等时，优先根据最近会话和当前选中项定位。修改前查阅相关工序或连线，缺少必要信息时询问用户。',
   '工期、关键工作与时差以工具计算为准。用工序编号作依据，并说明试算比较和输入假设。',
@@ -53,6 +55,11 @@ function registerPlanTools(ctx, workspace, emit) {
   tool('inspect_schedule','查看当前网络的工期、关键工序编号和规模。',{},() => {
     const result = workspace.describe();
     return {...result,critical:result.critical.slice(0,100),criticalCount:result.critical.length,context:workspace.context};
+  });
+  tool('inspect_modules','查看重复模块分组、单位工程编号和保留的外部控制分段。相同结构、工期及外部衔接才可合并显示；不改变源计划。',{},()=>{
+    const summary=summaries.buildSummary(workspace.graph);
+    return {sourceNodes:summary.sourceNodeCount,displayNodes:summary.nodes.length,days:summary.duration,
+      repeatedGroups:summary.repeatedGroups,groups:summary.groups};
   });
   tool('list_tasks','分页查找当前工序、工期及紧前关系。查询可匹配工序编号或名称。', {
     query:{type:'string'},unit:{type:'string'}, offset:{type:'integer'},limit:{type:'integer'}
@@ -100,13 +107,13 @@ function registerPlanTools(ctx, workspace, emit) {
   });
   tool('undo_draft','撤销当前草稿最近一组修改，保留其他尚未应用的修改。',{},()=>workspace.undo());
   tool('discard_draft','放弃当前所有草稿变更，恢复到已打开的正式图。',{},()=>workspace.discard());
-  tool('interface_action','请求软件界面操作。action 可为 view、focus、layout、undo、redo、open、save、save_as、export_svg、export_events。open 打开文件选择器，save_as 另存为。view 参数为 time（双代号时标）、logic（双代号结构）、flow（流程编辑）、timeline 或 table。focus 通过 id 定位工序或连线，kind 为 node 或 edge。layout 的 direction 为 RIGHT/DOWN/LEFT/UP。',{
+  tool('interface_action','请求软件界面操作。action 可为 view、focus、layout、undo、redo、open、save、save_as、export_svg、export_events。open 打开文件选择器，save_as 另存为。view 参数为 summary（重复模块总览）、time（双代号时标）、logic（双代号结构）、flow（流程编辑）、timeline 或 table。focus 通过 id 定位工序或连线，kind 为 node 或 edge。layout 的 direction 为 RIGHT/DOWN/LEFT/UP。',{
     action:{type:'string',required:true},view:{type:'string'},id:{type:'string'},kind:{type:'string'},direction:{type:'string'}
   },args=>{
     if(!['view','focus','layout','undo','redo','open','save','save_as','export_svg','export_events'].includes(args.action))throw Error('不支持的界面操作。');
     const action={action:args.action};
     if(args.action==='view'){
-      if(!['time','logic','flow','timeline','table'].includes(args.view))throw Error('视图无效。');
+      if(!['summary','time','logic','flow','timeline','table'].includes(args.view))throw Error('视图无效。');
       action.view=args.view;
     }
     if(args.action==='focus'){

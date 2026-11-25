@@ -168,8 +168,8 @@ app.whenReady().then(async()=>{
     return file;
   });
   route('svg',async(graph,view,unit)=>{
-    const kind=['time','logic'].includes(view)?view:null;
-    const result=await dialog.showSaveDialog(window,{defaultPath:kind?'activity-on-arrow.svg':'flow.svg',filters:[{name:'SVG',extensions:['svg']}]});
+    const kind=['time','logic','summary'].includes(view)?view:null;
+    const result=await dialog.showSaveDialog(window,{defaultPath:kind==='summary'?'module-summary.svg':kind?'activity-on-arrow.svg':'flow.svg',filters:[{name:'SVG',extensions:['svg']}]});
     if(result.canceled)return false;
     await write(result.filePath,(await draw(graph,{critical:view===true,networkView:kind,unit})).svg);
     return true;

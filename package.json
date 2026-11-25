@@ -2,7 +2,7 @@
   "name": "griddraft",
   "productName": "GridDraft",
   "description": "Desktop and command-line editor for directed network diagrams",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "license": "MIT",
   "author": "GridDraft contributors",
   "main": "src/engine.cjs",
@@ -88,7 +88,7 @@
     },
     "portable": {
       "artifactName": "GridDraft-Desktop-${version}-x64.exe",
-      "unpackDirName": "griddraft-050"
+      "unpackDirName": "griddraft-051"
     }
   }
 }

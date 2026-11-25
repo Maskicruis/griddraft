@@ -13,7 +13,15 @@ GridDraft 是一款独立的施工进度网络图工具。桌面端和 CLI 从�
 1. 在「项目信息 → 生成网络」中粘贴文字描述、CSV 或从 Excel 复制的表格，也可导入 TXT、Markdown、CSV、TSV、项目 JSON。表格可用「类型、数量、长度km」列，也可使用两列参数表或一行宽表。简单 JSON 支持 `turbineCount`、`substationCount`、`collectorLengthKm` 等字段。示例输入见 `examples/project-brief.json` 与 `examples/project-info.csv`。
 2. 检查识别后的工程数量、编号前缀、线路长度、基础型式及集电线路型式。数量有冲突或使用模糊范围时需要补充确切值。只有线路长度而没有回路数量时，先按一个总体模块建立，后续调整划分。
 3. 在同一窗口分别调整风机、升压站、集电线路和道路模块的名称、工期、紧前工序，并预览该模块的双代号网络。保存「信息与模板」后可在下一项目中导入复用。
-4. 生成后默认显示全项目双代号结构图，通过「单位工程视图」选择 WT01、SS01 等逐个查看与细化。单位工程视图仅包含内部关系，跨模块关系在全项目中查看。保存图文件会同时保留项目基本信息和模板来源。
+4. 生成或打开图文件时，如发现重复单位工程，自动显示「模块总览」；否则显示双代号结构图。点击汇总节点进入代表工程，通过「单位工程视图」选择 WT01、SS01 等逐个查看与细化，「返回模块总览」回到总图。单位工程视图仅包含内部关系，跨模块关系在全项目中查看。保存图文件会同时保留完整工序、项目基本信息和模板来源。
+
+### 重复模块判断与跳转（V0.5.1）
+
+有相同 `unit` / `unitType` 元数据的工序构成一个单位工程模块。至少两个单位工程的工序编号后缀、名称（忽略单位工程编号前缀）、类型、工期及工期来源、内部连接与时滞、对外端点和衔接条件均相同，才归入同一重复组。画布位置不影响判断。修改某台风机的工期、连接或特殊工序后，该实例会自动分组显示。没有单位工程标记的普通图保留全部节点，不凭相似名称猜测重复关系。
+
+总览把模块内部工序折叠成可点击的大节点，注明实例数量、编号范围、工序数量及源网络最早时间范围。点击进入代表实例，可切换其他实例；修改只影响当前实例。如模块存在受电、并网等中间对外控制关系，自动按这些边界分段展示，避免把前置与后续隐藏在一个节点中。红色表示包含源网络关键工作。汇总是导航视图，持续时间与关键工作仍来自完整源网络；切换视图、跳转和导出汇总图均不删除源工序，也不把各实例工期相加。SVG 是静态图，交互跳转在桌面软件中使用。
+
+可随时切换「双代号时标」「双代号结构」查看完整图。「计划智能体」也可查询模块分组、请求切换模块总览。CLI 的 `summary --format json` 提供分组、成员编号、分段和源节点/连线映射，便于第三方继续跳转。
 
 内置模块是可编辑的规划骨架。默认工期统一采用 1 天占位，图纸与导出的 SVG 会标明待估算数量。初稿先按单位工程并行、道路共同前置、全场受电条件汇合生成，未输入的资源、养护与验收时长、线路分段及分批并网安排需要按设计和施工组织补充。线路总长保留为项目资料，未据此推算工期。再次生成会建立新的初稿，细化结果可先另存为图文件。
 
@@ -46,6 +54,8 @@ Windows CLI ZIP 解压后运行 griddraft.cmd，无需另装 Node.js。跨平台
 .\griddraft.cmd project .\examples\project-brief.json --out initial-network.json
 .\griddraft.cmd project .\examples\project-info.csv --format svg --out initial-network.svg
 .\griddraft.cmd network initial-network.json --unit WT01 --view logic --out wind-unit.svg
+.\griddraft.cmd summary initial-network.json --out module-summary.svg
+.\griddraft.cmd summary initial-network.json --format json --out module-summary.json
 .\griddraft.cmd network .\examples\fuyu-demo.json --view time --out network-time.svg
 .\griddraft.cmd network .\examples\fuyu-demo.json --view logic --out network-logic.svg
 .\griddraft.cmd network .\examples\fuyu-demo.json --format json --out events.json

@@ -7,6 +7,7 @@ const {randomUUID}=require('node:crypto');
 const engine=require('../src/engine.cjs');
 const {buildNetwork,renderNetwork}=require('../src/aoa.cjs');
 const {parseProject,generateProject,unitGraph}=require('../src/project.cjs');
+const {buildSummary,renderSummary}=require('../src/summary.cjs');
 const version=require('../package.json').version;
 const MAX=32*1024*1024;
 const help=`GridDraft ${version}
@@ -16,6 +17,7 @@ const help=`GridDraft ${version}
   griddraft cpm <input.json | -> [--out file]
   griddraft edit <input.json | -> --patch operations.json [--out file]
   griddraft network <input.json | -> [--format svg|json] [--view time|logic] [--unit WT01] [--out file]
+  griddraft summary <input.json | -> [--format svg|json] [--out file]
   griddraft project <description.txt|table.csv|brief.json|-> [--format graph|brief|svg] [--view time|logic] [--out file]
   griddraft batch <directory> --out <directory> [--format svg|layout|cpm|network] [--view time|logic] [--critical]
 
@@ -104,7 +106,7 @@ async function main(args){
   if(!command||command==='--help'||command==='help'){process.stdout.write(help);return 0;}
   if(command==='--version'){process.stdout.write(version+'\n');return 0;}
   const choices={validate:[],layout:['--direction','--out'],render:['--critical','--out'],
-    cpm:['--out'],edit:['--patch','--out'],network:['--format','--view','--unit','--out'],project:['--format','--view','--out'],batch:['--out','--format','--critical','--view']};
+    cpm:['--out'],edit:['--patch','--out'],summary:['--format','--out'],network:['--format','--view','--unit','--out'],project:['--format','--view','--out'],batch:['--out','--format','--critical','--view']};
   if(!Object.hasOwn(choices,command))throw usage('未知命令 '+command);
   const {input,flags}=parse(args,choices[command]);
   if(command==='batch')return batch(input,flags);
@@ -126,6 +128,12 @@ async function main(args){
   }else if(command==='layout')result=await engine.layout(graph,{direction:flags['--direction']});
   else if(command==='render')result=(await engine.render(graph,{critical:flags['--critical']})).svg;
   else if(command==='cpm')result=engine.cpm(graph);
+  else if(command==='summary'){
+    const format=flags['--format']||'svg';
+    if(!['svg','json'].includes(format))throw usage('汇总格式须为 svg 或 json。');
+    const summary=buildSummary(graph);
+    result=format==='json'?summary:await renderSummary(summary);
+  }
   else if(command==='network'){
     const format=flags['--format']||'svg';
     if(!['svg','json'].includes(format)||flags['--view']&&!['time','logic'].includes(flags['--view']))

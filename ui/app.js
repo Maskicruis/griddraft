@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const ui={graph:null,file:null,previous:[],next:[],selected:null,list:'node',link:null,critical:false,
-  timeline:false,analysis:null,network:null,view:'time',workTable:false,zoom:1,busy:false,dirty:false,pointer:null,unit:null};
+  timeline:false,analysis:null,network:null,summary:null,view:'time',workTable:false,zoom:1,busy:false,dirty:false,pointer:null,unit:null,drill:null};
 const names={task:'工序',decision:'判断',milestone:'里程碑'};
 const api=window.grid;
 const blank=()=>({version:1,title:'未命名网络图',direction:'RIGHT',nodes:[],edges:[]});
@@ -78,6 +78,10 @@ function refresh(){
   $('workList').setAttribute('aria-pressed',String(ui.workTable));
   for(const [id,view] of [['networkTime','time'],['networkLogic','logic'],['flowView','flow']])
     $(id).setAttribute('aria-pressed',String(ui.view===view&&!ui.timeline&&!ui.workTable));
+  $('summaryView').hidden=!ui.graph.nodes.some(node=>node.unit);
+  $('summaryView').setAttribute('aria-pressed',String(ui.view==='summary'));
+  $('summaryBack').hidden=!ui.unit;
+  for(const id of ['add','link','timelineView','workList','edgeList'])$(id).disabled=Boolean(ui.summary);
   $('canvas').hidden=ui.timeline||ui.workTable;$('timeline').hidden=!ui.timeline;$('workTable').hidden=!ui.workTable;
   for(const id of ['minus','plus','fit','zoom'])$(id).hidden=ui.timeline||ui.workTable;
   $('exportNetworkData').hidden=!ui.network;
@@ -104,7 +108,9 @@ async function display(graph,{fresh=false,change=false,forceLayout=false,fitView
     ui.next=[];
     changeDirty(true);
   }
-  ui.graph=result.graph;ui.analysis=result.analysis;ui.critical=critical;ui.timeline=timeline;ui.view=view;ui.unit=unit;
+  ui.graph=result.graph;ui.analysis=result.analysis;ui.critical=critical;ui.timeline=timeline;ui.view=result.summary?'summary':view==='auto'?'logic':view;ui.unit=unit;
+  ui.summary=result.summary||null;
+  if(fresh)ui.drill=null;
   if(fresh)document.dispatchEvent(new Event('griddraft:plan-opened'));
   ui.network=result.network||null;
   ui.workTable=workTable&&Boolean(ui.network);
@@ -113,7 +119,7 @@ async function display(graph,{fresh=false,change=false,forceLayout=false,fitView
   $('stage').replaceChildren(document.importNode(parsed.documentElement,true));
   refresh();
   if(fresh||fitView)fit();else frameZoom();
-  const count=ui.network?ui.network.events.length+' 个事件 · '+ui.network.arrows.filter(a=>a.kind==='activity').length+
+  const count=ui.summary?ui.summary.sourceNodeCount+' 个源节点 → '+ui.summary.nodes.length+' 个汇总节点 · 点击模块进入详细网络':ui.network?ui.network.events.length+' 个事件 · '+ui.network.arrows.filter(a=>a.kind==='activity').length+
     ' 道工作 · '+ui.network.arrows.filter(a=>a.kind==='dummy').length+' 条虚工作':ui.graph.nodes.length+' 个节点 · '+ui.graph.edges.length+' 条连线';
   say(analysisError || count+(ui.analysis?' · 逻辑工期 '+ui.analysis.duration+' 天':''),Boolean(analysisError));
   document.dispatchEvent(new Event('griddraft:context-changed'));
@@ -124,6 +130,15 @@ function renderList(){
   $('nodeList').setAttribute('aria-pressed',String(ui.list==='node'));
   $('edgeList').setAttribute('aria-pressed',String(ui.list==='edge'));
   const find=$('find').value.trim().toLowerCase();
+  if(ui.summary){
+    const modules=ui.summary.nodes.filter(node=>node.kind==='module'&&[node.label,...node.units].some(value=>value.toLowerCase().includes(find)));
+    $('objects').replaceChildren(...modules.map(node=>{
+      const b=button(node.label,()=>run(()=>enterModule(node.id)),'object');
+      b.append(el('small',node.units[0]+(node.units.length>1?' … '+node.units.at(-1):'')+' · '+node.stepCount+' 道工序/个'));
+      return b;
+    }));
+    return;
+  }
   const visible=new Set(ui.graph.nodes.filter(node=>!ui.unit||node.unit===ui.unit).map(node=>node.id));
   const items=(ui.list==='node'?ui.graph.nodes.filter(node=>visible.has(node.id)):
     ui.graph.edges.filter(edge=>visible.has(edge.from)&&visible.has(edge.to))).filter(n=>[n.id,n.label,n.from,n.to].some(v=>v?.toLowerCase().includes(find)));
@@ -149,6 +164,11 @@ function field(form,key,label,value,type='text',choices){
 function inspector(){
   if(!ui.graph)return;
   const selected=dataForSelection(),area=$('properties');
+  if(ui.summary){
+    area.replaceChildren(el('h2','重复模块汇总'),el('p','结构、名称、工期、内部依赖及外部衔接相同的单位工程合并展示。点击模块进入代表工程，通过单位工程选择器切换其他实例。','aside-note'),
+      el('p','仅折叠显示，完整工序和关系均保存在源文件中。对外控制点按分段保留；工期和关键线路按源网络计算。','aside-note'));
+    return;
+  }
   const form=el('form');
   if(!selected){
     const title=field(form,'title','图名称',ui.graph.title);
@@ -285,6 +305,16 @@ function pickConnection(id){
   run(async()=>{await edit([{op:'put-edge',edge}]);select('edge',edge.id);});
 }
 const canvas=$('canvas');
+async function enterModule(id){
+  const module=ui.summary?.nodes.find(node=>node.id===id);
+  if(!module?.units.length)return;
+  ui.drill={units:module.units.slice(),stage:module.stage,stageCount:module.stageCount};
+  ui.selected=null;
+  await display(ui.graph,{unit:module.units[0],view:'logic',timeline:false,workTable:false,fitView:true});
+  ui.zoom=1;frameZoom();
+  const first=module.sourceIds.find(id=>ui.graph.nodes.find(node=>node.id===id)?.unit===ui.unit);
+  if(first){select('node',first);$('stage').querySelector('[data-activity="'+CSS.escape(first)+'"]')?.scrollIntoView({block:'center',inline:'center'});}
+}
 canvas.onpointerdown=event=>{
   if(ui.busy||!ui.graph||event.button!==0)return;
   const activity=event.target.closest('[data-activity]'),marker=event.target.closest('[data-event]');
@@ -294,13 +324,14 @@ canvas.onpointerdown=event=>{
     else select('node',activity.dataset.activity);
     return;
   }
+  const module=event.target.closest('[data-module]');
   const node=event.target.closest('[data-node]'),edge=event.target.closest('[data-edge]');
   if(node&&ui.link){pickConnection(node.dataset.node);return;}
   if(edge){select('edge',edge.dataset.edge);return;}
   const task=node?ui.graph.nodes.find(n=>n.id===node.dataset.node):null;
   if(task)select('node',task.id);
   const start=coordinates(event);
-  ui.pointer={id:event.pointerId,node,task,start,clientX:event.clientX,clientY:event.clientY,
+  ui.pointer={id:event.pointerId,node,task,module:module?.dataset.module,start,clientX:event.clientX,clientY:event.clientY,
     scrollLeft:canvas.scrollLeft,scrollTop:canvas.scrollTop,moved:false};
   canvas.setPointerCapture(event.pointerId);
 };
@@ -321,12 +352,18 @@ function endPointer(event){
   const d=ui.pointer;
   if(!d||event.pointerId!==d.id)return;
   ui.pointer=null;canvas.classList.remove('dragging');
+  if(d.module&&!d.moved&&event.type==='pointerup'){run(()=>enterModule(d.module));return;}
   if(!d.task&&!d.moved)select(null,null);
   if(d.node)d.node.setAttribute('transform','translate('+d.task.position.x+' '+d.task.position.y+')');
   if(d.task&&d.position&&event.type==='pointerup')run(()=>edit([{op:'put-node',node:{...d.task,position:d.position}}]));
 }
 canvas.onpointerup=endPointer;canvas.onpointercancel=endPointer;
-canvas.ondblclick=event=>{if(!event.target.closest('[data-node],[data-edge],[data-event],[data-activity]')&&ui.graph)newNode(coordinates(event));};
+canvas.ondblclick=event=>{if(!ui.summary&&!event.target.closest('[data-node],[data-edge],[data-event],[data-activity]')&&ui.graph)newNode(coordinates(event));};
+canvas.addEventListener('keydown',event=>{
+  const module=event.target.closest('[data-module]');
+  if(module&&['Enter',' '].includes(event.key)){event.preventDefault();run(()=>enterModule(module.dataset.module));}
+});
+$('summaryView').onclick=$('summaryBack').onclick=()=>run(()=>display(ui.graph,{unit:null,view:'summary',timeline:false,workTable:false,fitView:true}));
 $('find').oninput=renderList;
 for(const kind of ['node','edge'])$(kind+'List').onclick=()=>{ui.list=kind;renderList();};
 $('add').onclick=()=>newNode();$('cancelAdd').onclick=()=>$('nodeDialog').close();
@@ -341,7 +378,7 @@ $('demo').onclick=()=>run(async()=>{if(guard())await display(await api.demo(),{f
 async function openGraph(){
   if(!guard())return;
   const opened=await api.open();
-  if(opened){await display(opened.graph,{fresh:true,critical:false,timeline:false,view:'time',workTable:false});ui.file=opened.file;changeDirty(false);}
+  if(opened){await display(opened.graph,{fresh:true,critical:false,timeline:false,view:'auto',workTable:false});ui.file=opened.file;changeDirty(false);}
 }
 $('open').onclick=()=>run(openGraph);
 async function save(as){

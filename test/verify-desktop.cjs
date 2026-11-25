@@ -100,11 +100,27 @@ async function run(){
     await page.locator('#projectDialog').waitFor({state:'hidden'});
     assert.equal(await page.locator('#unitScope option').count(),5);
     assert.match(await page.locator('#projectNotice').textContent(),/占位值/);
-    await page.locator('#unitScope').selectOption('WT01');
+    await page.locator('#stage [data-module][data-unit="WT01"]').first().waitFor();
+    assert.equal(await page.locator('#summaryView').getAttribute('aria-pressed'),'true');
+    const sourceBefore=await page.locator('#status').textContent();
+    assert.match(sourceBefore,/39 个源节点/);
+    await page.screenshot({path:path.join(output,'09-重复模块总览.png')});
+    await page.locator('#stage [data-module][data-unit="WT01"]').first().click();
     await page.waitForFunction(()=>document.querySelector('#projectNotice').textContent.includes('单位工程内部'));
+    assert.equal(await page.locator('#unitScope').inputValue(),'WT01');
+    assert.match(await page.locator('#projectNotice').textContent(),/重复组共 2 个实例/);
     assert.equal(await page.locator('#stage [data-kind="activity"]').count(),12);
     assert.equal(await page.locator('#objects .object').count(),12);
     await page.screenshot({path:path.join(output,'08-单位工程模块网络.png')});
+    await page.locator('#unitScope').selectOption('WT02');
+    await page.waitForFunction(()=>document.querySelector('#canvas').getAttribute('aria-busy')==='false'&&document.querySelector('#unitScope').value==='WT02');
+    assert.equal(await page.locator('#stage [data-kind="activity"]').count(),12);
+    await page.locator('#summaryBack').click();
+    await page.locator('#stage [data-module][data-unit="WT01"]').first().waitFor();
+    assert.equal(await page.locator('#status').textContent(),sourceBefore);
+    await page.locator('#stage [data-module][data-unit="WT01"]').first().focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('#unitScope').value==='WT01');
     await page.locator('#add').click();
     await page.locator('#nodeForm input[name=label]').fill('模块补充工序');
     await page.locator('#nodeForm input[name=duration]').fill('2');
@@ -247,7 +263,7 @@ async function run(){
     await page.waitForFunction(()=>document.querySelectorAll('#stage [data-edge]').length===11);
     assert.equal(await page.locator('#properties select[name=to]').inputValue(),'FINISH');
     assert.deepEqual(errors,[]);
-    const result={projectIntake:true,moduleTemplates:true,unitScope:true,modelSettings:true,credentialsSurviveRestart:true,harnessDraft:true,fullNetworkEditing:true,
+    const result={repeatedModuleSummary:true,clickDrillDown:true,keyboardDrillDown:true,returnToSummary:true,projectIntake:true,moduleTemplates:true,unitScope:true,modelSettings:true,credentialsSurviveRestart:true,harnessDraft:true,fullNetworkEditing:true,
       multiTurnContext:true,draftPreview:true,pluginPlaceholder:true,timeScaledNetwork:true,structuralNetwork:true,
       workTableRecalculates:true, guiTimeline:true, drawAndConnect:true, positionUndo:true, criticalPathDays:34};
     await fs.writeFile(path.join(output,'gui-verification.json'),JSON.stringify(result,null,2),'utf8');

@@ -63,12 +63,18 @@ jobs:
           if ($network.kind -ne 'activity-on-arrow' -or $network.duration -ne 34) { throw 'Unexpected demo network output.' }
           & $cli network $plan --out 'dist/GridDraft-Time-Scaled-Example.svg'
           if ($LASTEXITCODE -ne 0) { throw 'CLI failed to export demo SVG.' }
+          & $cli project (Join-Path $cliDirectory 'examples/project-brief.json') --out 'dist/GridDraft-Project-Network-Example.json'
+          if ($LASTEXITCODE -ne 0) { throw 'CLI failed to generate project network.' }
+          & $cli summary 'dist/GridDraft-Project-Network-Example.json' --out 'dist/GridDraft-Module-Summary-Example.svg'
+          if ($LASTEXITCODE -ne 0) { throw 'CLI failed to export module summary.' }
+          $summary = & $cli summary 'dist/GridDraft-Project-Network-Example.json' --format json
+          if ($LASTEXITCODE -ne 0 -or ($summary -join "`n" | ConvertFrom-Json).repeatedGroups -lt 1) { throw 'CLI failed to identify repeated modules.' }
           npm install --no-save --package-lock=false --ignore-scripts playwright@1.58.2
           if ($LASTEXITCODE -ne 0) { throw 'Playwright setup failed.' }
           node test/verify-desktop.cjs $desktop (Join-Path $env:RUNNER_TEMP 'griddraft-ui-proof')
           if ($LASTEXITCODE -ne 0) { throw 'Packaged desktop smoke test failed.' }
           Copy-Item -LiteralPath README.md -Destination 'dist/QUICKSTART.md'
-          $assets = @($desktop, $bundle, 'dist/GridDraft-Time-Scaled-Example.svg', 'dist/QUICKSTART.md')
+          $assets = @($desktop, $bundle, 'dist/GridDraft-Time-Scaled-Example.svg', 'dist/GridDraft-Module-Summary-Example.svg', 'dist/GridDraft-Project-Network-Example.json', 'dist/QUICKSTART.md')
           $checksums = foreach ($asset in $assets) {
             $hash = Get-FileHash -LiteralPath $asset -Algorithm SHA256
             "$($hash.Hash.ToLowerInvariant())  $(Split-Path $asset -Leaf)"
@@ -82,6 +88,8 @@ jobs:
             dist/GridDraft-Desktop-*-x64.exe
             dist/GridDraft-CLI-*-windows-x64.zip
             dist/GridDraft-Time-Scaled-Example.svg
+            dist/GridDraft-Module-Summary-Example.svg
+            dist/GridDraft-Project-Network-Example.json
             dist/QUICKSTART.md
             dist/SHA256SUMS.txt
 
