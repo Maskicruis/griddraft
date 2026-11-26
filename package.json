@@ -2,7 +2,7 @@
   "name": "griddraft",
   "productName": "GridDraft",
   "description": "Desktop and command-line editor for directed network diagrams",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "license": "MIT",
   "author": "GridDraft contributors",
   "main": "src/engine.cjs",
@@ -57,7 +57,14 @@
     "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
     "@deepseek-ai/dsh-user-approval": "0.2.2-rc.3",
     "elkjs": "0.12.1",
-    "eventsource-parser": "3.1.1"
+    "jszip": "3.10.2",
+    "eventsource-parser": "3.1.1",
+    "exceljs": "4.4.0"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
   },
   "devDependencies": {
     "electron": "44.3.0",
@@ -88,7 +95,7 @@
     },
     "portable": {
       "artifactName": "GridDraft-Desktop-${version}-x64.exe",
-      "unpackDirName": "griddraft-051"
+      "unpackDirName": "griddraft-052"
     }
   }
 }

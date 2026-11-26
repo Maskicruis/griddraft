@@ -56,7 +56,8 @@ function normalize(input) {
   });
   requireValue(new Set(edges.map(e=>e.id)).size === edges.length,'存在重复连线编号。');
   return {version:1,title:input.title.trim(),direction:input.direction ?? 'RIGHT',nodes,edges,
-    ...(input.project?{project:normalizeProject(input.project)}:{})};
+    ...(input.project?{project:normalizeProject(input.project)}:{}),
+    ...(input.importSource?{importSource:require('./excel.cjs').normalizeSource(input.importSource)}:{})};
 }
 
 function cpm(input) {

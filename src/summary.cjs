@@ -96,7 +96,7 @@ function buildSummary(input){
 
 const escape=text=>String(text).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const short=(text,n=23)=>[...text].slice(0,n).join('')+([...text].length>n?'…':'');
-async function renderSummary(summary){
+async function renderSummary(summary,{animated=false,embedMotionStyle=true}={}){
   if(summary.kind!=='module-summary')throw new GraphError('INVALID_SUMMARY','需要模块汇总数据。');
   const output=await new ELK().layout({id:'summary',layoutOptions:{'elk.algorithm':'layered','elk.direction':'DOWN',
     'elk.edgeRouting':'ORTHOGONAL','elk.spacing.nodeNode':'24','elk.layered.spacing.nodeNodeBetweenLayers':'36','elk.randomSeed':'1'},
@@ -108,12 +108,14 @@ async function renderSummary(summary){
     `<text x="22" y="34" font-size="21" font-weight="700" fill="#15314a">${escape(summary.title)} · 模块总览</text>`,
     `<text x="22" y="60" font-size="13" fill="#516a82">${summary.sourceNodeCount} 个源节点 → ${summary.nodes.length} 个汇总节点 · 源网络${summary.estimatedCount?'占位':''}工期 ${summary.duration} 天 · ${summary.repeatedGroups} 组重复模块</text>`,
     '<defs><marker id="summaryArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#5283a6"/></marker></defs><g transform="translate(20 88)">'];
+  if(animated&&embedMotionStyle)parts.push(require('./time-layout.cjs').motionStyle);
   for(const edge of output.edges??[]){
     const source=summary.edges.find(row=>row.id===edge.id);
     for(const section of edge.sections??[]){
       const points=[section.startPoint,...(section.bendPoints??[]),section.endPoint];
       const d=points.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ');
       parts.push(`<g><title>${escape(source.label||'源网络依赖')} · 时滞 ${source.lag} 天 · ${source.sourceIds.length} 条源关系</title><path d="${d}" fill="none" stroke="${source.critical?'#b94440':'#5283a6'}" stroke-width="2" marker-end="url(#summaryArrow)"/></g>`);
+      if(animated)parts.push(`<path d="${d}" class="network-flow" stroke="${source.critical?'#b94440':'#5283a6'}"/>`);
     }
   }
   for(const item of output.children){

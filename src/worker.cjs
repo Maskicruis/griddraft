@@ -10,7 +10,7 @@ async function draw(){
   if(['summary','auto'].includes(options.networkView)&&!options.unit){
     const summary=buildSummary(source);
     if(options.networkView==='summary'||summary.repeatedGroups)
-      return {graph:source,summary,analysis:cpm(source),svg:await renderSummary(summary)};
+      return {graph:source,summary,analysis:cpm(source),svg:await renderSummary(summary,{animated:options.animated,embedMotionStyle:false})};
   }
   if(!options.networkView){
     const result=await render(visible,options);
@@ -21,7 +21,7 @@ async function draw(){
     return result;
   }
   const network=buildNetwork(visible);
-  return {graph:source,network,analysis:cpm(visible),svg:renderNetwork(network,{view:options.networkView==='auto'?'logic':options.networkView})};
+  return {graph:source,network,analysis:cpm(visible),svg:renderNetwork(network,{view:options.networkView==='auto'?'logic':options.networkView,viewport:options.viewport,animated:options.animated,embedMotionStyle:false})};
 }
 draw().then(result=>parentPort.postMessage({result}),
   error=>parentPort.postMessage({error:error.message,code:error.code}));

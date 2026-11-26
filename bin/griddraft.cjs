@@ -8,6 +8,7 @@ const engine=require('../src/engine.cjs');
 const {buildNetwork,renderNetwork}=require('../src/aoa.cjs');
 const {parseProject,generateProject,unitGraph}=require('../src/project.cjs');
 const {buildSummary,renderSummary}=require('../src/summary.cjs');
+const {readExcel,analyzeExcel,mappingFor}=require('../src/excel.cjs');
 const version=require('../package.json').version;
 const MAX=32*1024*1024;
 const help=`GridDraft ${version}
@@ -18,6 +19,7 @@ const help=`GridDraft ${version}
   griddraft edit <input.json | -> --patch operations.json [--out file]
   griddraft network <input.json | -> [--format svg|json] [--view time|logic] [--unit WT01] [--out file]
   griddraft summary <input.json | -> [--format svg|json] [--out file]
+  griddraft import <plan.xlsx> [--sheet name] [--format report|graph] [--out file]
   griddraft project <description.txt|table.csv|brief.json|-> [--format graph|brief|svg] [--view time|logic] [--out file]
   griddraft batch <directory> --out <directory> [--format svg|layout|cpm|network] [--view time|logic] [--critical]
 
@@ -106,10 +108,21 @@ async function main(args){
   if(!command||command==='--help'||command==='help'){process.stdout.write(help);return 0;}
   if(command==='--version'){process.stdout.write(version+'\n');return 0;}
   const choices={validate:[],layout:['--direction','--out'],render:['--critical','--out'],
-    cpm:['--out'],edit:['--patch','--out'],summary:['--format','--out'],network:['--format','--view','--unit','--out'],project:['--format','--view','--out'],batch:['--out','--format','--critical','--view']};
+    cpm:['--out'],edit:['--patch','--out'],import:['--sheet','--format','--out'],summary:['--format','--out'],network:['--format','--view','--unit','--out'],project:['--format','--view','--out'],batch:['--out','--format','--critical','--view']};
   if(!Object.hasOwn(choices,command))throw usage('未知命令 '+command);
   const {input,flags}=parse(args,choices[command]);
   if(command==='batch')return batch(input,flags);
+  if(command==='import'){
+    const format=flags['--format']||'report';
+    if(input==='-'||!['report','graph'].includes(format))throw usage('import需要 .xlsx 文件，格式须为 report 或 graph。');
+    if((await fs.stat(input)).size>16*1024*1024)throw Error('Excel文件超过16 MiB。');
+    const book=await readExcel(await fs.readFile(input),path.basename(input));
+    const sheet=flags['--sheet']?book.sheets.find(sheet=>sheet.name===flags['--sheet']):book.sheets[0];
+    if(!sheet)throw Error('没有找到所选工作表。');
+    const result=analyzeExcel(sheet,mappingFor(sheet.headers),book.name);
+    if(format==='graph'&&!result.graph)throw Object.assign(Error('Excel资料已读取，'+result.issues.length+'项待核对；请先使用 --format report 查看详情。'),{code:'EXCEL_VALIDATION'});
+    await write(flags['--out'],json(format==='graph'?result.graph:result));return 0;
+  }
   if(command==='project'){
     const format=flags['--format']||'graph';
     const view=flags['--view']||'logic';

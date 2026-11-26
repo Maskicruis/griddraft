@@ -171,10 +171,11 @@ function lanes(network,view) {
   return {time,routeLanes,positions};
 }
 
-function renderNetwork(network,{view='time',pixelsPerDay=32}={}) {
+function renderNetwork(network,{view='time',pixelsPerDay,viewport,animated=false,embedMotionStyle=true}={}) {
   if (!['time','logic'].includes(view)) throw new GraphError('INVALID_VIEW','视图须为 time 或 logic。');
-  if (!Number.isInteger(pixelsPerDay)||pixelsPerDay<4||pixelsPerDay>120)
+  if (pixelsPerDay!==undefined&&(!Number.isInteger(pixelsPerDay)||pixelsPerDay<4||pixelsPerDay>120))
     throw new GraphError('INVALID_SCALE','每日报表像素须为 4 至 120 的整数。');
+  if(view==='time')return require('./time-layout.cjs').renderTimeNetwork(network,{pixelsPerDay,viewport,animated,embedMotionStyle});
   const {time,routeLanes,positions}=lanes(network,view);
   const x0=65, y0=163, pitch=86;
   const unit=view==='time'?Math.min(pixelsPerDay, Math.max(0.001,150000/Math.max(1,network.duration))):180;
@@ -184,7 +185,7 @@ function renderNetwork(network,{view='time',pixelsPerDay=32}={}) {
   const location=new Map(network.events.map(e=>[e.id,{x:x0+time(e)*unit,y:y0+positions.get(e.id)*pitch}]));
   const lines=[`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" font-family="Microsoft YaHei UI, Segoe UI, sans-serif">`,
     `<title>${escape(network.title)} — ${view==='time'?'双代号时标网络图':'双代号网络图'}</title>`,
-    `<rect width="${width}" height="${height}" fill="#fbfdff"/>`,
+    `<rect width="${width}" height="${height}" fill="#fbfdff"/>`,animated&&embedMotionStyle?require('./time-layout.cjs').motionStyle:'',
     `<text x="22" y="35" font-size="22" font-weight="700" fill="#15314a">${escape(network.title)}</text>`,
     `<text x="22" y="63" font-size="13" fill="#516a82">${view==='time'?'双代号时标网络图 · 最早时间标尺':'双代号网络图 · 逻辑结构'} · ${network.estimatedCount?'占位工期计算':'计算工期'} ${network.duration} 天${network.estimatedCount?' · '+network.estimatedCount+' 道工期待估算':''}</text>`];
   const tick=Math.max(1,Math.ceil(Math.max(58/unit,axis/45)));
@@ -249,6 +250,7 @@ function renderNetwork(network,{view='time',pixelsPerDay=32}={}) {
         content+=`<text x="${x}" y="${y-12-row*17}" text-anchor="middle" font-size="13" font-weight="600" fill="${color}" stroke="#fbfdff" stroke-width="4" paint-order="stroke">${escape(visible)}</text>`;
       }
     }
+    if(animated)content+=`<path d="${hitPath}" class="network-flow" stroke="${color}"/>`;
     lines.push(`<g data-activity="${escape(arrow.activityId||'')}" data-kind="${arrow.kind}" data-critical="${critical}"><title>${escape(label||'虚工作')}｜${arrow.from}→${arrow.to}｜ES D${arrow.earlyStart} EF D${arrow.earlyFinish}｜TF ${arrow.totalFloat} FF ${arrow.freeFloat}</title>${content}</g>`);
   }
   for(const event of network.events){

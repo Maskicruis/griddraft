@@ -87,6 +87,41 @@ async function run(){
     const errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.locator('#projectDialog').waitFor({timeout:15000});
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await page.locator('#projectExcel').click();
+    await page.locator('#excelDialog').waitFor();
+    await page.locator('#excelFile').setInputFiles(path.join(__dirname,'../examples/excel-plan.xlsx'));
+    await page.waitForFunction(()=>!document.querySelector('#excelGenerate').disabled);
+    assert.equal(await page.locator('#excelRows tr').count(),4);
+    await page.screenshot({path:path.join(output,'10-Excel计划导入.png')});
+    await page.locator('#excelGenerate').click();
+    await page.locator('#excelDialog').waitFor({state:'hidden'});
+    assert.equal(await page.locator('#stage [data-kind="activity"]').count(),3);
+    assert.match(await page.locator('#status').textContent(),/12 天/);
+    await page.locator('#networkTime').click();
+    await page.locator('#stage svg[data-layout="adaptive-time"]').waitFor();
+    assert.ok(parseInt(await page.locator('#zoom').textContent(),10)>=78);
+    const flow=page.locator('#stage .network-flow').first();
+    assert.equal(await flow.evaluate(node=>getComputedStyle(node).animationName),'grid-flow');
+    const offset=await flow.evaluate(node=>getComputedStyle(node).strokeDashoffset);
+    await page.waitForFunction(value=>getComputedStyle(document.querySelector('#stage .network-flow')).strokeDashoffset!==value,offset);
+    await page.locator('#flowMotion').click();
+    assert.equal(await flow.evaluate(node=>getComputedStyle(node).display),'none');
+    await page.locator('#flowMotion').click();
+    await page.emulateMedia({reducedMotion:'reduce'});
+    assert.equal(await flow.evaluate(node=>getComputedStyle(node).display),'none');
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await page.screenshot({path:path.join(output,'11-自适应时标与流动箭线.png')});
+    if(process.env.GRIDDRAFT_REFERENCE_XLSX){
+      await page.locator('#excelOpen').click();
+      await page.locator('#excelFile').setInputFiles(process.env.GRIDDRAFT_REFERENCE_XLSX);
+      await page.waitForFunction(()=>document.querySelectorAll('#excelRows tr').length===191);
+      await page.waitForFunction(()=>document.querySelector('#excelStatus').textContent.includes('待核对'));
+      assert.equal(await page.locator('#excelGenerate').isDisabled(),true);
+      await page.screenshot({path:path.join(output,'12-升压站191条原始记录.png')});
+      await page.locator('#excelClose').click();
+    }
+    await page.locator('#projectOpen').click();
     await page.locator('#projectText').fill('项目名称：项目生成验收\n2台风机、一座升压站、集电线路30公里，桩基础。');
     await page.locator('#projectRead').click();
     await page.waitForFunction(()=>document.querySelector('#projectName').value==='项目生成验收');
@@ -96,6 +131,7 @@ async function run(){
     assert.equal(await page.locator('#draftCanvas [data-kind="activity"]').count(),12);
     await page.locator('#previewClose').click();
     await page.screenshot({path:path.join(output,'07-项目概况与模块模板.png')});
+    page.once('dialog',dialog=>dialog.accept());
     await page.locator('#projectGenerate').click();
     await page.locator('#projectDialog').waitFor({state:'hidden'});
     assert.equal(await page.locator('#unitScope option').count(),5);
@@ -171,6 +207,10 @@ async function run(){
     page.on('pageerror',error=>errors.push(error.message));
     await page.locator('#projectDialog').waitFor();
     await page.locator('#projectClose').click();
+    await page.locator('#excelOpen').click();
+    await page.waitForFunction(()=>document.querySelectorAll('#excelRows tr').length>0);
+    assert.equal(await page.locator('#excelRows tr').count(),process.env.GRIDDRAFT_REFERENCE_XLSX?191:4);
+    await page.locator('#excelClose').click();
     await page.locator('#demo').click();
     await page.locator('#stage [data-event]').first().waitFor();
     await page.locator('#agentOpen').click();
@@ -263,7 +303,7 @@ async function run(){
     await page.waitForFunction(()=>document.querySelectorAll('#stage [data-edge]').length===11);
     assert.equal(await page.locator('#properties select[name=to]').inputValue(),'FINISH');
     assert.deepEqual(errors,[]);
-    const result={repeatedModuleSummary:true,clickDrillDown:true,keyboardDrillDown:true,returnToSummary:true,projectIntake:true,moduleTemplates:true,unitScope:true,modelSettings:true,credentialsSurviveRestart:true,harnessDraft:true,fullNetworkEditing:true,
+    const result={excelImport:true,excelSurvivesRestart:true,adaptiveTimeLayout:true,flowingArrows:true,reducedMotion:true,repeatedModuleSummary:true,clickDrillDown:true,keyboardDrillDown:true,returnToSummary:true,projectIntake:true,moduleTemplates:true,unitScope:true,modelSettings:true,credentialsSurviveRestart:true,harnessDraft:true,fullNetworkEditing:true,
       multiTurnContext:true,draftPreview:true,pluginPlaceholder:true,timeScaledNetwork:true,structuralNetwork:true,
       workTableRecalculates:true, guiTimeline:true, drawAndConnect:true, positionUndo:true, criticalPathDays:34};
     await fs.writeFile(path.join(output,'gui-verification.json'),JSON.stringify(result,null,2),'utf8');

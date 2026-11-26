@@ -21,12 +21,17 @@ h2{font-size:15px;margin:0} .objects input{margin:10px 9px 2px;min-width:0;font-
 .object.active{border-color:#8dc2da;background:#e8f5fc}
 .object small{display:block;color:var(--muted);margin-top:3px}
 .objects footer{margin-top:auto;border-top:1px solid var(--border);padding:8px 10px}.objects footer button{width:100%}
+.excel-dialog{width:min(1280px,94vw);max-height:94vh;overflow:auto}.excel-dialog>.actions{flex-wrap:wrap}.excel-dialog .actions label{display:flex;align-items:center;gap:8px;margin:0}.excel-mapping{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 14px}.excel-mapping select{width:100%;min-width:0}.excel-preview{max-height:40vh;overflow:auto;border:1px solid var(--border);margin:16px 0}.excel-preview table{border-collapse:collapse;font-size:12px;min-width:100%}.excel-preview th{position:sticky;top:0;background:#e8f2fa;white-space:nowrap}.excel-preview td,.excel-preview th{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);min-width:95px;max-width:300px;overflow-wrap:anywhere}.excel-issues{font-size:12px;line-height:1.6;max-height:130px;overflow:auto;color:#935e18}.excel-issues p{margin:4px 0}
 .editor{display:flex;flex-direction:column}.toolbar{padding:10px;flex-wrap:wrap;border-bottom:1px solid var(--border);font-size:12px}
 .toolbar button,.toolbar select{padding:7px 8px}
 #canvas,#timeline{flex:1;min-height:0;overflow:auto;background:radial-gradient(circle,#cedee9 1px,transparent 1px) 0 0/19px 19px,var(--bg)}
 #canvas{user-select:none;cursor:grab;touch-action:none} #canvas.dragging{cursor:grabbing}
 #stage{margin:16px auto;min-width:1px;min-height:1px;position:relative}
 #stage svg{display:block;overflow:visible;position:absolute;left:0;top:0}
+#stage.motion-paused .network-flow{display:none;animation-play-state:paused}
+@keyframes grid-flow{to{stroke-dashoffset:-32}}
+.network-flow{animation:grid-flow 1.8s linear infinite;pointer-events:none;stroke-linecap:round;fill:none;stroke-dasharray:4 28;stroke-width:3.6;opacity:.8}
+@media(prefers-reduced-motion:reduce){.network-flow{animation:none;display:none}}
 #stage [data-node].selected .node-shell{stroke:#136995;stroke-width:3.5}
 #stage [data-edge].selected path:last-of-type{stroke:#0e6a9d;stroke-width:4}
 #stage [data-event].selected circle{stroke:#edab33;stroke-width:3.5}

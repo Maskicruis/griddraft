@@ -42,6 +42,7 @@ function renderGroups(groups){
 }
 
 function renderSteps(){
+  $('substationTemplateNote').hidden=intake.type!=='substation';
   const template=intake.templates?.[intake.type];
   if(!template)return;
   $('templateSteps').replaceChildren(...template.steps.map(step=>{

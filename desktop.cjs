@@ -124,6 +124,29 @@ app.whenReady().then(async()=>{
   route('projectTemplates',options=>project.templates(options));
   route('projectParse',(text,format)=>project.parseProject(text,format));
   route('projectGenerate',brief=>project.generateProject(brief));
+  route('excelRead',async(bytes,name)=>{
+    if(!(bytes instanceof Uint8Array)||bytes.byteLength>16*1024*1024||typeof name!=='string')throw Error('Excel 导入数据无效或超过16 MiB。');
+    const result=await new Promise((resolve,reject)=>{
+      const worker=new Worker(path.join(__dirname,'src','excel-worker.cjs'),{workerData:{bytes,name},resourceLimits:{maxOldGenerationSizeMb:256}});
+      const timer=setTimeout(()=>{worker.terminate();reject(Error('Excel 读取超时，请按单位工程拆分文件。'));},30000);
+      worker.once('message',data=>data.error?reject(Error(data.error)):resolve(data.result));
+      worker.once('error',error=>reject(Error('Excel 读取失败：'+error.message)));
+      worker.once('exit',code=>{clearTimeout(timer);if(code)reject(Error('Excel 读取进程提前退出，请缩小文件后重试。'));});
+    });
+    await write(path.join(app.getPath('userData'),'excel-last-import.json'),JSON.stringify(result));
+    return result;
+  });
+  route('excelAnalyze',(sheet,mapping,name)=>require('./src/excel.cjs').analyzeExcel(sheet,mapping,name));
+  route('excelLast',async()=>{
+    try{return JSON.parse(await fs.readFile(path.join(app.getPath('userData'),'excel-last-import.json'),'utf8'));}
+    catch{return null;}
+  });
+  route('excelSave',async(source)=>{
+    const checked=require('./src/excel.cjs').normalizeSource(source);
+    const result=await dialog.showSaveDialog(window,{title:'保存Excel原始导入资料',defaultPath:'excel-source.json',filters:[{name:'Excel导入资料 JSON',extensions:['json']}]});
+    if(result.canceled)return false;
+    await write(result.filePath,JSON.stringify({version:1,kind:'excel-source',...checked},null,2)+'\n');return true;
+  });
   route('projectImport',async()=>{
     const result=await dialog.showOpenDialog(window,{title:'导入项目基本信息',properties:['openFile'],
       filters:[{name:'项目文字或表格',extensions:['txt','md','csv','tsv','json']}]});

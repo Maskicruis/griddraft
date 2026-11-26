@@ -1,7 +1,8 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const ui={graph:null,file:null,previous:[],next:[],selected:null,list:'node',link:null,critical:false,
-  timeline:false,analysis:null,network:null,summary:null,view:'time',workTable:false,zoom:1,busy:false,dirty:false,pointer:null,unit:null,drill:null};
+  timeline:false,analysis:null,network:null,summary:null,view:'time',workTable:false,zoom:1,busy:false,dirty:false,pointer:null,unit:null,drill:null,motion:true,viewport:null};
+try{ui.motion=localStorage.getItem('griddraft-motion')!=='off';}catch{}
 const names={task:'工序',decision:'判断',milestone:'里程碑'};
 const api=window.grid;
 const blank=()=>({version:1,title:'未命名网络图',direction:'RIGHT',nodes:[],edges:[]});
@@ -35,11 +36,12 @@ function frameZoom(){
   $('stage').style.width=Math.ceil(width)+'px';$('stage').style.height=Math.ceil(height)+'px';
   $('zoom').textContent=Math.round(ui.zoom*100)+'%';
 }
-function fit(){
+function fit({readable=false}={}){
   const svg=$('stage').firstElementChild;
   if(!svg||ui.timeline||ui.workTable)return;
   const {width,height}=svg.viewBox.baseVal,view=$('canvas');
   ui.zoom=Math.max(.05,Math.min(1.25,(view.clientWidth-28)/width,(view.clientHeight-36)/height));
+  if(readable&&ui.view==='time')ui.zoom=Math.max(.78,ui.zoom);
   frameZoom();
   view.scrollTo(0,0);
 }
@@ -81,6 +83,10 @@ function refresh(){
   $('summaryView').hidden=!ui.graph.nodes.some(node=>node.unit);
   $('summaryView').setAttribute('aria-pressed',String(ui.view==='summary'));
   $('summaryBack').hidden=!ui.unit;
+  $('networkAuto').hidden=ui.view!=='time'||ui.timeline||ui.workTable;
+  $('flowMotion').hidden=!(ui.network||ui.summary)||ui.timeline||ui.workTable;
+  $('flowMotion').setAttribute('aria-pressed',String(ui.motion));
+  $('stage').classList.toggle('motion-paused',!ui.motion);
   for(const id of ['add','link','timelineView','workList','edgeList'])$(id).disabled=Boolean(ui.summary);
   $('canvas').hidden=ui.timeline||ui.workTable;$('timeline').hidden=!ui.timeline;$('workTable').hidden=!ui.workTable;
   for(const id of ['minus','plus','fit','zoom'])$(id).hidden=ui.timeline||ui.workTable;
@@ -94,7 +100,8 @@ function refresh(){
 async function display(graph,{fresh=false,change=false,forceLayout=false,fitView=false,critical=ui.critical,timeline=ui.timeline,view=ui.view,workTable=ui.workTable,unit=fresh?null:ui.unit}={}){
   if(unit&&!graph.nodes.some(node=>node.unit===unit))unit=null;
   let result, analysisError;
-  try{result=await api.draw(graph,{critical:critical||timeline,forceLayout,networkView:!timeline&&view!=='flow'?view:null,unit});}
+  const viewport={width:$('canvas').clientWidth||1000,height:$('canvas').clientHeight||650};
+  try{result=await api.draw(graph,{critical:critical||timeline,forceLayout,networkView:!timeline&&view!=='flow'?view:null,unit,viewport,animated:true});}
   catch(error){
     if(!['CYCLE','MISSING_DURATION','EMPTY_NETWORK'].includes(error.code))throw error;
     analysisError=error.message;
@@ -110,6 +117,7 @@ async function display(graph,{fresh=false,change=false,forceLayout=false,fitView
   }
   ui.graph=result.graph;ui.analysis=result.analysis;ui.critical=critical;ui.timeline=timeline;ui.view=result.summary?'summary':view==='auto'?'logic':view;ui.unit=unit;
   ui.summary=result.summary||null;
+  ui.viewport=viewport;
   if(fresh)ui.drill=null;
   if(fresh)document.dispatchEvent(new Event('griddraft:plan-opened'));
   ui.network=result.network||null;
@@ -118,7 +126,7 @@ async function display(graph,{fresh=false,change=false,forceLayout=false,fitView
   if(parsed.documentElement.localName!=='svg')throw Error('绘图引擎返回了无效的 SVG。');
   $('stage').replaceChildren(document.importNode(parsed.documentElement,true));
   refresh();
-  if(fresh||fitView)fit();else frameZoom();
+  if(fresh||fitView)fit({readable:true});else frameZoom();
   const count=ui.summary?ui.summary.sourceNodeCount+' 个源节点 → '+ui.summary.nodes.length+' 个汇总节点 · 点击模块进入详细网络':ui.network?ui.network.events.length+' 个事件 · '+ui.network.arrows.filter(a=>a.kind==='activity').length+
     ' 道工作 · '+ui.network.arrows.filter(a=>a.kind==='dummy').length+' 条虚工作':ui.graph.nodes.length+' 个节点 · '+ui.graph.edges.length+' 条连线';
   say(analysisError || count+(ui.analysis?' · 逻辑工期 '+ui.analysis.duration+' 天':''),Boolean(analysisError));
@@ -395,7 +403,24 @@ $('workList').onclick=()=>run(()=>display(ui.graph,{view:ui.view==='flow'?'time'
 $('layout').onclick=()=>run(()=>display({...ui.graph,direction:$('direction').value},{forceLayout:true,fitView:true,change:true}));
 $('cpm').onclick=()=>run(()=>display(ui.graph,{critical:!ui.critical,timeline:false}));
 $('timelineView').onclick=()=>run(()=>display(ui.graph,{timeline:!ui.timeline,workTable:false,fitView:true}));
-$('fit').onclick=fit;
+$('fit').onclick=()=>fit();
+$('actualSize').onclick=()=>{ui.zoom=1;frameZoom();};
+$('networkAuto').onclick=()=>run(()=>display(ui.graph,{view:'time',fitView:true,timeline:false,workTable:false}));
+$('flowMotion').onclick=()=>{
+  ui.motion=!ui.motion;$('stage').classList.toggle('motion-paused',!ui.motion);
+  $('flowMotion').setAttribute('aria-pressed',String(ui.motion));
+  try{localStorage.setItem('griddraft-motion',ui.motion?'on':'off');}catch{}
+};
+let resizeTimer;
+new ResizeObserver(()=>{
+  clearTimeout(resizeTimer);
+  resizeTimer=setTimeout(()=>{
+    if(ui.busy||ui.view!=='time'||ui.timeline||ui.workTable||!ui.graph||!ui.viewport)return;
+    const canvas=$('canvas');
+    if(Math.abs(canvas.clientWidth-ui.viewport.width)<60&&Math.abs(canvas.clientHeight-ui.viewport.height)<60)return;
+    run(()=>display(ui.graph,{fitView:true}));
+  },450);
+}).observe($('canvas'));
 for(const [id,gain] of [['plus',1.22],['minus',1/1.22]])$(id).onclick=()=>{ui.zoom=Math.min(4,Math.max(.05,ui.zoom*gain));frameZoom();};
 async function restoreHistory(from,to){
     if(!from.length)return;

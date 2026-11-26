@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'">
 <title>GridDraft 网络图工作台</title>
-<link rel="stylesheet" href="style.css"><script src="app.js" defer></script><script src="services.js" defer></script><script src="project.js" defer></script>
+<link rel="stylesheet" href="style.css"><script src="app.js" defer></script><script src="services.js" defer></script><script src="project.js" defer></script><script src="excel.js" defer></script>
 </head>
 <body>
 <header class="masthead">
@@ -18,7 +18,7 @@
     <input id="find" type="search" placeholder="搜索编号或名称" aria-label="搜索节点">
     <div class="tabs"><button id="nodeList" aria-pressed="true">节点</button><button id="edgeList" aria-pressed="false">连线</button></div>
     <div id="objects"></div>
-    <footer><button id="projectOpen" class="primary">项目信息 → 生成网络</button><button id="demo">打开扶余示例</button></footer>
+    <footer><button id="projectOpen" class="primary">项目信息 → 生成网络</button><button id="excelOpen">导入 Excel 计划</button><button id="demo">打开扶余示例</button></footer>
   </aside>
   <section class="editor" aria-label="网络画布">
     <div class="toolbar actions">
@@ -37,7 +37,9 @@
       <button id="timelineView" aria-pressed="false">时间轴</button>
       <button id="workList" aria-pressed="false">双代号工作表</button>
       <button id="exportNetworkData">导出事件 JSON</button>
-      <span class="spacer"></span><button id="minus" aria-label="缩小">−</button><button id="fit">适合窗口</button><button id="plus" aria-label="放大">＋</button>
+      <button id="networkAuto" hidden>智能适配</button><button id="actualSize">实际大小</button>
+      <button id="flowMotion" aria-pressed="true">流动箭线</button>
+      <span class="spacer"></span><button id="minus" aria-label="缩小">−</button><button id="fit">全图缩略</button><button id="plus" aria-label="放大">＋</button>
     </div>
     <div id="projectNotice" class="project-notice" hidden></div>
     <div id="canvas" tabindex="0" aria-label="可编辑的网络图"><div id="stage"></div></div>
@@ -47,6 +49,16 @@
   </section>
   <aside class="properties"><header><h2>属性</h2></header><div id="properties"></div></aside>
 </main>
+<input id="excelFile" type="file" accept=".xlsx" hidden>
+<dialog id="excelDialog" class="excel-dialog" aria-labelledby="excelTitle">
+  <header class="service-head"><div><h2 id="excelTitle">Excel 计划导入</h2><small id="excelFilename"></small></div><button id="excelClose">关闭</button></header>
+  <div class="actions"><button id="excelChoose" class="primary">选择 .xlsx 文件</button><label>工作表 <select id="excelSheet"></select></label><button id="excelRestore">恢复上次导入</button><button id="excelSourceSave">保存原始资料</button></div>
+  <p class="aside-note">先读取完整资料，再校验工作编号和关系。原软件工作编号与 Excel 行号分别保留，存在缺失或不支持的关系时保留原文。</p>
+  <div id="excelMapping" class="excel-mapping"></div><button id="excelValidate">重新校验字段</button>
+  <p id="excelStatus" role="status"></p><div id="excelIssues" class="excel-issues"></div>
+  <div class="excel-preview"><table><thead id="excelHead"></thead><tbody id="excelRows"></tbody></table></div>
+  <footer class="actions"><span class="spacer"></span><button id="excelGenerate" class="primary" disabled>生成已校验网络</button></footer>
+</dialog>
 <dialog id="nodeDialog"><form id="nodeForm">
   <h2>新增节点</h2>
   <label>编号<input name="id" maxlength="64" pattern="[A-Za-z0-9_][A-Za-z0-9_.\-]*" required></label>
@@ -124,7 +136,7 @@
     <section class="project-input">
       <h3>项目基本信息</h3>
       <textarea id="projectText" aria-label="项目描述" placeholder="项目名称：扶余一号&#10;27台风机、1座升压站、集电线路300公里，桩基础。"></textarea>
-      <div class="actions"><button id="projectRead">识别文字 / 粘贴表格</button><button id="projectImport">导入文件</button></div>
+      <div class="actions"><button id="projectRead">识别文字 / 粘贴表格</button><button id="projectImport">导入文件</button><button id="projectExcel">导入 Excel 计划</button></div>
       <p class="aside-note">支持 TXT、Markdown、CSV、TSV、项目 JSON；Excel 表格可直接复制粘贴或另存为 CSV。</p>
       <label>项目名称<input id="projectName" value="新建风电项目" maxlength="100"></label>
       <div class="project-options">
@@ -136,6 +148,7 @@
     <section class="project-template">
       <h3>可复用的模块工序模板</h3>
       <select id="projectType" aria-label="选择工程模块"><option value="wind">风机工程</option><option value="substation">升压站工程</option><option value="collector">集电线路</option><option value="road">场内道路</option></select>
+      <p id="substationTemplateNote" class="aside-note" hidden>升压站正式默认基准为00126.xlsx。当前七步骨架仅供兼容演示，未替代该表；请通过“导入 Excel 计划”读取完整工序，编号关系校验后生成。</p>
       <p class="aside-note">修改名称、工期和紧前工序后可保存为项目模板，再用于其他项目。默认1天为占位工期；录入的工期作为本项目估算值。</p>
       <div class="template-table"><table><thead><tr><th>工序代码</th><th>工序名称</th><th>天</th><th>紧前代码</th></tr></thead><tbody id="templateSteps"></tbody></table></div>
       <div class="actions"><button id="templatePreview">预览本模块网络</button><button id="projectSave">保存信息与模板</button></div>

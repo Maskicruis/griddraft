@@ -63,6 +63,9 @@ jobs:
           if ($network.kind -ne 'activity-on-arrow' -or $network.duration -ne 34) { throw 'Unexpected demo network output.' }
           & $cli network $plan --out 'dist/GridDraft-Time-Scaled-Example.svg'
           if ($LASTEXITCODE -ne 0) { throw 'CLI failed to export demo SVG.' }
+          & $cli import (Join-Path $cliDirectory 'examples/excel-plan.xlsx') --format graph --out (Join-Path $env:RUNNER_TEMP 'excel-import.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged CLI failed to import Excel.' }
+          Copy-Item -LiteralPath 'examples/excel-plan.xlsx' -Destination 'dist/GridDraft-Excel-Plan-Example.xlsx'
           & $cli project (Join-Path $cliDirectory 'examples/project-brief.json') --out 'dist/GridDraft-Project-Network-Example.json'
           if ($LASTEXITCODE -ne 0) { throw 'CLI failed to generate project network.' }
           & $cli summary 'dist/GridDraft-Project-Network-Example.json' --out 'dist/GridDraft-Module-Summary-Example.svg'
@@ -74,7 +77,7 @@ jobs:
           node test/verify-desktop.cjs $desktop (Join-Path $env:RUNNER_TEMP 'griddraft-ui-proof')
           if ($LASTEXITCODE -ne 0) { throw 'Packaged desktop smoke test failed.' }
           Copy-Item -LiteralPath README.md -Destination 'dist/QUICKSTART.md'
-          $assets = @($desktop, $bundle, 'dist/GridDraft-Time-Scaled-Example.svg', 'dist/GridDraft-Module-Summary-Example.svg', 'dist/GridDraft-Project-Network-Example.json', 'dist/QUICKSTART.md')
+          $assets = @($desktop, $bundle, 'dist/GridDraft-Time-Scaled-Example.svg', 'dist/GridDraft-Module-Summary-Example.svg', 'dist/GridDraft-Project-Network-Example.json', 'dist/GridDraft-Excel-Plan-Example.xlsx', 'dist/QUICKSTART.md')
           $checksums = foreach ($asset in $assets) {
             $hash = Get-FileHash -LiteralPath $asset -Algorithm SHA256
             "$($hash.Hash.ToLowerInvariant())  $(Split-Path $asset -Leaf)"
@@ -88,6 +91,7 @@ jobs:
             dist/GridDraft-Desktop-*-x64.exe
             dist/GridDraft-CLI-*-windows-x64.zip
             dist/GridDraft-Time-Scaled-Example.svg
+            dist/GridDraft-Excel-Plan-Example.xlsx
             dist/GridDraft-Module-Summary-Example.svg
             dist/GridDraft-Project-Network-Example.json
             dist/QUICKSTART.md

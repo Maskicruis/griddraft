@@ -27,6 +27,22 @@ GridDraft 是一款独立的施工进度网络图工具。桌面端和 CLI 从�
 
 模块按场地准备、基础、安装、电气与调试等常见工作组织。工程实际工序和条件需要逐项核实。[美国能源部风电建设工作介绍](https://www.energy.gov/cmei/systems/windexchange/large-community-wind-handbook)
 
+## Excel计划导入（V0.5.2）
+
+在左侧或项目概况窗口点击「导入 Excel 计划」，选择 `.xlsx`。软件在后台读取全部记录，支持选择工作表和字段映射，自动保存最近一次读取的资料，重启后可恢复。工作簿最多16 MiB、12张工作表，每张最多1000条导入记录。旧 `.xls` 请先另存为 `.xlsx`。
+
+生成网络最少需要「工作编号、工作名称、工期」；支持「前置工作、后置工作、计划开始、计划完成、行类型、父工作编号」。工作编号采用原软件编号，不用Excel行号代替。汇总行通过“行类型=汇总”或父工作编号识别，不计入具体工序计算。示例见 `examples/excel-plan.xlsx`。
+
+读取与网络校验分别显示：缺少编号、引用不存在、重复编号、循环、截断文本、SS/FF/SF或负时滞均保留原文并提示，停止生成错误的计算图。当前支持FS和非负整数天时滞，如 `20FS+2工日`。前置和后置中的同一关系合并，不重复连接；同一关系时滞冲突会提示核对。公式使用文件中保存的结果，不运行Excel宏或外部链接。
+
+成功生成后的图文件保留原始行、字段映射和计划日期，可继续编辑、保存。原日期是参考基准；计算图仍按逻辑日及依赖推算，未导入原软件工作日历。未通过校验的资料可查看、保存为来源JSON，补齐原表后重新读取。升压站 `00126.xlsx` 的具体处理要求见[基准说明](docs/substation-baseline.md)。
+
+## 时标图智能适配与流动箭线
+
+时标图在保持等比例时间轴的前提下，按并行工作、时间跨度和当前窗口选择比例；名称自动换行、分层避让，邻近事件错层，不再因三层文字空间已满而丢弃标签。初次显示及窗口大小改变时自动调整；大图保持至少78%显示比例并允许滚动，避免为了塞进一屏而把文字缩得过小。「智能适配」重新计算，「实际大小」回到100%，「全图缩略」用于概览整张图。结构图原有布局保留。
+
+时标图、结构图和模块总览支持「流动箭线」开关，沿依赖方向循环，遵循系统减少动态效果设置。动画不改变源工序、时间参数和关键线路，也不表示现场实际施工状态。导出SVG与事件JSON保持静态、可复核。交互效果参考[Archify 3.3.0](https://github.com/tt-a1i/archify/tree/v3.3.0)的连接流动和暂停原则，使用GridDraft自身的SVG实现。
+
 - 「双代号结构」按逻辑层级布局，便于检查依赖、汇合和虚工作。箭长随布局变化。
 - 「工作表」按双代号列出工期、最早开始（ES）、最早完成（EF）、总时差（TF）和自由时差（FF）。点击工作名称可改名称、工期等字段。工作表中的自由时差按源工序及后续约束计算。
 - 「流程编辑」用于录入工序、修改连接与时滞、拖动节点。新建或打开 JSON 后，从「＋节点」添加工作并填写工期，再通过「连接节点」设置前置和后续工作。完成录入后，切回「双代号时标」查看计算结果。
@@ -56,6 +72,8 @@ Windows CLI ZIP 解压后运行 griddraft.cmd，无需另装 Node.js。跨平台
 .\griddraft.cmd network initial-network.json --unit WT01 --view logic --out wind-unit.svg
 .\griddraft.cmd summary initial-network.json --out module-summary.svg
 .\griddraft.cmd summary initial-network.json --format json --out module-summary.json
+.\griddraft.cmd import .\examples\excel-plan.xlsx --format report --out import-report.json
+.\griddraft.cmd import .\examples\excel-plan.xlsx --format graph --out imported-network.json
 .\griddraft.cmd network .\examples\fuyu-demo.json --view time --out network-time.svg
 .\griddraft.cmd network .\examples\fuyu-demo.json --view logic --out network-logic.svg
 .\griddraft.cmd network .\examples\fuyu-demo.json --format json --out events.json
@@ -69,6 +87,7 @@ Windows CLI ZIP 解压后运行 griddraft.cmd，无需另装 Node.js。跨平台
 - 图文件契约在 schema/graph-v1.schema.json。节点及连线 ID 唯一、端点存在、工期和坐标合法等会在引擎中交叉校验。layout 写回节点位置和折线路由。GUI 中手动移动会重画相关连线，重新执行自动排版可重新路由。
 
 外部智能体可以生成源工序数据，调用 `validate`、`edit`、`network` 和 `batch`，并通过 JSON 读取计算结果。命令行可由脚本、其他编程语言和 CI 调用。
+`import` 默认输出包含原始记录和校验项的报告；可用 `--sheet` 选择工作表。仅在校验通过时 `--format graph` 输出计算图，否则返回明确错误。
 
 ## 参考项目
 

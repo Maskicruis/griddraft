@@ -9,7 +9,8 @@
     "direction": {"enum": ["RIGHT", "DOWN", "LEFT", "UP"], "default": "RIGHT"},
     "nodes": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/node"}},
     "edges": {"type": "array", "maxItems": 5000, "items": {"$ref": "#/$defs/edge"}},
-    "project": {"type": "object", "required": ["version", "name", "units"], "description": "Validated project brief and reusable module templates; see examples/project-brief.json."}
+    "project": {"type": "object", "required": ["version", "name", "units"], "description": "Validated project brief and reusable module templates; see examples/project-brief.json."},
+    "importSource": {"type":"object","required":["name","sheet","headers","rows","mapping"],"description":"Validated Excel source rows and column mapping retained with the graph."}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$"},
